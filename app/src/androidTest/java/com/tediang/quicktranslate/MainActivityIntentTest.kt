@@ -16,9 +16,13 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityIntentTest {
     @Test
-    fun ordinaryLaunchShowsNoExternalText() {
+    fun ordinaryLaunchShowsManualTranslationSurface() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        EncryptedServiceConfigStore(context).save(
+            ServiceConfig("测试服务", "https://api.example.com", "", "test-model"),
+        )
         val intent = Intent(
-            ApplicationProvider.getApplicationContext(),
+            context,
             MainActivity::class.java,
         ).apply {
             action = Intent.ACTION_MAIN
@@ -26,8 +30,9 @@ class MainActivityIntentTest {
 
         ActivityScenario.launch<MainActivity>(intent).use {
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-            assertVisible(device, "普通启动")
-            assertVisible(device, "未收到外部文本")
+            assertVisible(device, "快译")
+            assertVisible(device, "测试服务 · test-model")
+            assertVisible(device, "等待输入")
         }
     }
 

@@ -30,15 +30,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
+    private val configStore by lazy { EncryptedServiceConfigStore(applicationContext) }
+    private val translationClient by lazy { ChatCompletionsClient() }
     private var diagnosticEntry by mutableStateOf(DiagnosticEntry.empty())
+    private var ordinaryLaunch by mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        ordinaryLaunch = intent.isOrdinaryLaunch()
         diagnosticEntry = DiagnosticEntry.from(intent)
         setContent {
             QuickTranslateTheme {
-                DiagnosticScreen(diagnosticEntry)
+                if (ordinaryLaunch) {
+                    ManualTranslationApp(
+                        configStore = configStore,
+                        client = translationClient,
+                        onClose = ::finish,
+                    )
+                } else {
+                    DiagnosticScreen(diagnosticEntry)
+                }
             }
         }
     }
@@ -46,9 +58,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        ordinaryLaunch = intent.isOrdinaryLaunch()
         diagnosticEntry = DiagnosticEntry.from(intent)
     }
 }
+
+private fun Intent?.isOrdinaryLaunch(): Boolean = this?.action == null || this.action == Intent.ACTION_MAIN
 
 @Composable
 private fun DiagnosticScreen(entry: DiagnosticEntry) {
