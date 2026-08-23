@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="translate_clipboard"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_translate_clipboard_short"
+        android:shortcutLongLabel="@string/shortcut_translate_clipboard_long">
+        <intent
+            android:action="com.tediang.quicktranslate.action.TRANSLATE_CLIPBOARD"
+            android:targetPackage="com.tediang.quicktranslate"
+            android:targetClass="com.tediang.quicktranslate.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">快译</string>
+    <string name="process_text_label">翻译</string>
+    <string name="shortcut_translate_clipboard_short">翻译剪贴板</string>
+    <string name="shortcut_translate_clipboard_long">翻译剪贴板中的新文本</string>
+</resources>
