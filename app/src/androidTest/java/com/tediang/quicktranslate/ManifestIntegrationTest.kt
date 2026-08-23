@@ -27,7 +27,10 @@ class ManifestIntegrationTest {
             PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong()),
         )
 
-        assertTrue(processTextHandlers.any { it.activityInfo.packageName == context.packageName })
+        val processTextHandler = processTextHandlers.single {
+            it.activityInfo.packageName == context.packageName
+        }
+        assertEquals("快译", processTextHandler.loadLabel(packageManager).toString())
         assertTrue(sendHandlers.any { it.activityInfo.packageName == context.packageName })
     }
 

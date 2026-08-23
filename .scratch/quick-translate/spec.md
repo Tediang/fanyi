@@ -16,9 +16,9 @@ Android 普通应用不能强行修改所有宿主应用的文字菜单，也不
 
 ## User Stories
 
-1. As a Chrome reader, I want “翻译” to appear in the standard selected-text action menu, so that I can send selected text to 快译 without copying it manually.
+1. As a Chrome reader, I want “快译” to appear in the standard selected-text action menu, so that I can distinguish it from other translation actions and send selected text without copying it manually.
 2. As a Chrome reader, I want the complete selected text to reach 快译, so that the translation matches the passage I selected.
-3. As a reader, I want 快译 to open immediately after I choose “翻译”, so that the interaction feels faster than the existing system translator.
+3. As a reader, I want 快译 to open immediately after I choose “快译”, so that the interaction feels faster than the existing system translator.
 4. As a reader, I want Back to return me to the application I was reading, so that translation does not interrupt my flow.
 5. As a user of an app that can share text, I want 快译 to appear as a text share target, so that I have a fallback when the selected-text action is unavailable.
 6. As a user sharing a URL-only item, I want 快译 to show the received URL as input instead of silently scraping it, so that the app does not fetch content I did not explicitly send.
@@ -86,7 +86,7 @@ Android 普通应用不能强行修改所有宿主应用的文字菜单，也不
 - Build a native Android application for the Moto X70 Air running Android 16. Kotlin and Jetpack Compose are the default implementation stack; exact dependency versions are selected when the project is scaffolded.
 - Treat support for earlier Android versions as non-required. The build may choose a lower minimum API when it is effectively free, but no compatibility work may compromise or delay the target-device behavior.
 - Use a single application-level input-routing seam. Android entry adapters normalize `ACTION_PROCESS_TEXT`, `ACTION_SEND`, the dedicated App Shortcut and launcher/manual input into a common translation input containing source text, entry type and optional language override.
-- Register an exported `ACTION_PROCESS_TEXT` text/plain Activity labelled “翻译”. Read `EXTRA_PROCESS_TEXT` and its readonly flag, but do not return replacement text in the first version.
+- Register an exported `ACTION_PROCESS_TEXT` text/plain Activity labelled “快译”. Read `EXTRA_PROCESS_TEXT` and its readonly flag, but do not return replacement text in the first version.
 - Register a text/plain `ACTION_SEND` receiver. Do not fetch or scrape content when the share contains only a URL.
 - Publish a static App Shortcut labelled “翻译剪贴板”. Its dedicated action or deep link must be distinguishable from the launcher Intent and must route to 快捷键翻译.
 - Evaluate clipboard eligibility only after the dedicated shortcut is triggered. Eligibility requires textual content, a platform timestamp no older than two minutes where available, and a content fingerprint not already consumed. Store only the timestamp/fingerprint needed for duplicate protection, never a background clipboard history.
@@ -111,7 +111,7 @@ Android 普通应用不能强行修改所有宿主应用的文字菜单，也不
 - Do not persist source text, translated text or a history record. Preserve source only in current UI state long enough to recover from first-time configuration, retry or process recreation; clear translation content when the session is intentionally dismissed.
 - Sanitize all diagnostics at creation time rather than relying on display-time masking. Diagnostics may include protocol, non-sensitive endpoint components, model, HTTP status, normalized error class and timing, but never content, secrets or complete payloads.
 - Instrument three latency boundaries: trigger-to-visible-UI, trigger-to-request-dispatch and dispatch-to-first-valid-translation-fragment, plus total request duration.
-- Use the canonical product strings: App “快译”, selection action “翻译”, shortcut “翻译剪贴板”.
+- Use the canonical product strings: App “快译”, selection action “快译”, shortcut “翻译剪贴板”.
 - Respect the domain glossary and both accepted ADRs: fixed protocol adapters and the dedicated Moto App Shortcut are constraints, not implementation suggestions to revisit silently.
 
 ## Testing Decisions
@@ -156,6 +156,6 @@ Android 普通应用不能强行修改所有宿主应用的文字菜单，也不
 - The requirements and domain vocabulary have been confirmed by the user. This spec is ready for an implementation agent without another product interview.
 - The first executable artifact should be a diagnostic build that proves the external Android facts before model integration: Chrome selection delivery, X host behavior, Moto shortcut enumeration and shortcut Intent preservation.
 - The Moto settings screenshots show third-party app sub-actions such as payment and scan shortcuts, which is strong evidence that App Shortcuts are enumerated. It remains a target-device acceptance fact, not a platform guarantee.
-- Menu placement remains host-controlled. Success means the “翻译” action is available somewhere in the standard selection toolbar, not that 快译 controls its exact position.
+- Menu placement remains host-controlled. Success means the “快译” action is available somewhere in the standard selection toolbar, not that the App controls its exact position. Moto X70 Air 的 Chrome 实测位置为更多菜单。
 - Self-hosted services vary in how faithfully they implement an advertised compatibility protocol. Normalize errors and keep each adapter strict enough that incompatibility is visible rather than silently producing empty translations.
 - If later work proposes screen OCR, arbitrary protocol templates, provider failover or public distribution, it must be specified as a separate feature and must explicitly revisit the relevant ADR/product boundary.

@@ -21,7 +21,7 @@
 <activity
     android:name=".ProcessTextActivity"
     android:exported="true"
-    android:label="翻译"
+    android:label="快译"
     android:theme="@style/Theme.Translate.Compact">
     <intent-filter>
         <action android:name="android.intent.action.PROCESS_TEXT" />
@@ -50,7 +50,7 @@ AOSP 的标准实现会：
 - 使用目标 Activity 的 label 作为菜单文案；
 - 用 `SHOW_AS_ACTION_IF_ROOM` 添加项目。
 
-因此把 Activity label 设为“翻译”可以影响名称，但**能否在第一层、位于第几个、是否进入右侧更多菜单，最终由宿主菜单空间、宿主排序、系统版本和 ROM 决定**。接收方不能声明“永远第一个”。证据见 [AOSP `Editor.java` 4853–4864、4920–4935](https://android.googlesource.com/platform/frameworks/base/+/29aa638/core/java/android/widget/Editor.java#4853)。
+因此把 Activity label 设为“快译”可以影响名称并区别多个同名“翻译”动作，但**能否在第一层、位于第几个、是否进入右侧更多菜单，最终由宿主菜单空间、宿主排序、系统版本和 ROM 决定**。接收方不能声明“永远第一个”。证据见 [AOSP `Editor.java` 4853–4864、4920–4935](https://android.googlesource.com/platform/frameworks/base/+/29aa638/core/java/android/widget/Editor.java#4853)。
 
 截图中的“向 Grok 提问”很符合这类 `PROCESS_TEXT` Activity 的表现，但仅凭 UI 不能证明其内部实现。
 
@@ -202,7 +202,7 @@ Accessibility 服务在用户主动启用后可以：
 
 先不接 LLM，只做一个显示收到 action、MIME type、文本长度、readonly、showFlags 的诊断 APK，在目标手机上验证：
 
-1. Chrome 顶层还是更多菜单能否出现“翻译”；
+1. Chrome 顶层还是更多菜单能否出现“快译”；
 2. X 的正文、回复、编辑框各自是否出现；
 3. 分享入口传来的是选择文字、整帖文字还是 URL；
 4. 本 App 的“翻译剪贴板”App Shortcut 是否出现在 AI 键选择器中，触发时专用 Intent 是否保持原样；
@@ -228,7 +228,7 @@ Accessibility 服务在用户主动启用后可以：
 - `TranslationScreen`：原文折叠、流式结果、复制、返回上一 App；
 - `PrivacyBoundary`：日志脱敏、默认无历史、请求结束即清理内存状态。
 
-速度体验建议：Activity 先本地瞬时显示原文和加载骨架；复用网络连接；流式展示结果；短文本结果做有边界的内存缓存；错误时保留原文并一键重试。菜单 Activity label 直接用“翻译”，不要放品牌长名。
+速度体验建议：Activity 先本地瞬时显示原文和加载骨架；复用网络连接；流式展示结果；短文本结果做有边界的内存缓存；错误时保留原文并一键重试。Moto X70 Air 的 Chrome 实测存在多个名为“翻译”的动作，因此菜单 Activity label 使用短品牌名“快译”。
 
 ### Tier 2：设备增强版
 
