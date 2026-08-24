@@ -91,16 +91,16 @@ class TranslationPaneFlowTest {
             assertVisible("日文")
             assertVisible("韩文")
             clickText("日文")
-            assertVisible("译为 · 日文")
+            assertVisible("目标 · 日文")
 
             findResource("preference_selector").click()
             listOf("通用", "正式", "口语", "书信", "学术", "文学").forEach(::assertVisible)
             clickText("正式")
-            assertVisible("偏好 · 正式")
+            assertVisible("风格 · 正式")
         }
 
         launchApp().use {
-            assertVisible("偏好 · 正式")
+            assertVisible("风格 · 正式")
         }
     }
 

@@ -3,6 +3,7 @@ package com.tediang.quicktranslate
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -22,12 +24,13 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -52,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -63,6 +67,7 @@ import kotlinx.coroutines.launch
 
 private enum class AppSurface { TRANSLATE, PROFILES, EDIT_PROFILE }
 private enum class ExpandedPane { SOURCE, TRANSLATION }
+private enum class TranslationChoice { TARGET, PREFERENCE }
 
 @Composable
 internal fun QuickTranslateApp(
@@ -202,6 +207,7 @@ private fun TranslationSessionScreen(
     val focusRequester = remember { FocusRequester() }
     val state by controller.state.collectAsState()
     var expandedPane by rememberSaveable { mutableStateOf<ExpandedPane?>(null) }
+    var translationChoice by rememberSaveable { mutableStateOf<TranslationChoice?>(null) }
     LaunchedEffect(launch.id, launch.focusInput) {
         if (launch.focusInput) focusRequester.requestFocus()
     }
@@ -243,6 +249,8 @@ private fun TranslationSessionScreen(
             TranslationActionBar(
                 state = state,
                 running = running,
+                onChooseTarget = { translationChoice = TranslationChoice.TARGET },
+                onChoosePreference = { translationChoice = TranslationChoice.PREFERENCE },
                 onPaste = {
                     val clipboard = context.getSystemService(ClipboardManager::class.java)
                     val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
@@ -279,14 +287,6 @@ private fun TranslationSessionScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TranslationSelectors(
-                    targetLanguage = state.targetLanguage,
-                    preference = state.preference,
-                    enabled = !running,
-                    onSelectTarget = controller::selectTarget,
-                    onSelectPreference = onSelectPreference,
-                )
-
                 val copyDiagnostics: (() -> Unit)? = diagnostics
                     ?.takeIf { state.progress is TranslationProgress.Failed }
                     ?.let {
@@ -341,76 +341,22 @@ private fun TranslationSessionScreen(
             }
         }
     }
-}
 
-@Composable
-private fun TranslationSelectors(
-    targetLanguage: TargetLanguage,
-    preference: TranslationPreference,
-    enabled: Boolean,
-    onSelectTarget: (TargetLanguage) -> Unit,
-    onSelectPreference: (TranslationPreference) -> Unit,
-) {
-    var targetExpanded by remember { mutableStateOf(false) }
-    var preferenceExpanded by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            OutlinedButton(
-                onClick = { targetExpanded = true },
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth().automationTag("target_selector"),
-            ) {
-                Text(
-                    "译为 · ${targetLanguage.displayName}",
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            DropdownMenu(
-                expanded = targetExpanded,
-                onDismissRequest = { targetExpanded = false },
-            ) {
-                TargetLanguage.entries.forEach { target ->
-                    DropdownMenuItem(
-                        text = { Text(target.displayName) },
-                        onClick = {
-                            onSelectTarget(target)
-                            targetExpanded = false
-                        },
-                    )
-                }
-            }
-        }
-        Box(modifier = Modifier.weight(1f)) {
-            OutlinedButton(
-                onClick = { preferenceExpanded = true },
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth().automationTag("preference_selector"),
-            ) {
-                Text(
-                    "偏好 · ${preference.displayName}",
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            DropdownMenu(
-                expanded = preferenceExpanded,
-                onDismissRequest = { preferenceExpanded = false },
-            ) {
-                TranslationPreference.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.displayName) },
-                        onClick = {
-                            onSelectPreference(option)
-                            preferenceExpanded = false
-                        },
-                    )
-                }
-            }
-        }
+    translationChoice?.let { choice ->
+        TranslationOptionsSheet(
+            choice = choice,
+            targetLanguage = state.targetLanguage,
+            preference = state.preference,
+            onDismiss = { translationChoice = null },
+            onSelectTarget = {
+                controller.selectTarget(it)
+                translationChoice = null
+            },
+            onSelectPreference = {
+                onSelectPreference(it)
+                translationChoice = null
+            },
+        )
     }
 }
 
@@ -651,43 +597,198 @@ private fun translationStatus(progress: TranslationProgress, translatedText: Str
 private fun TranslationActionBar(
     state: TranslationSessionState,
     running: Boolean,
+    onChooseTarget: () -> Unit,
+    onChoosePreference: () -> Unit,
     onPaste: () -> Unit,
     onCopy: () -> Unit,
     onPrimaryAction: () -> Unit,
 ) {
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val barModifier = Modifier
+        .fillMaxWidth()
+        .navigationBarsPadding()
+        .padding(horizontal = 16.dp, vertical = 10.dp)
     Surface(tonalElevation = 0.dp, shadowElevation = 4.dp) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            OutlinedButton(
-                onClick = if (state.translatedText.isNotBlank()) onCopy else onPaste,
-                enabled = !running,
-                modifier = Modifier.weight(1f),
+        if (landscape) {
+            Row(
+                modifier = barModifier,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(if (state.translatedText.isNotBlank()) "复制译文" else "粘贴原文")
+                TranslationTargetButton(state, running, onChooseTarget, Modifier.weight(1.1f))
+                TranslationPreferenceButton(state, running, onChoosePreference, Modifier.weight(1f))
+                TranslationSecondaryButton(state, running, onPaste, onCopy, Modifier.weight(0.9f))
+                TranslationPrimaryButton(state, running, onPrimaryAction, Modifier.weight(1.1f))
             }
-            Button(
-                onClick = onPrimaryAction,
-                enabled = running || state.sourceText.isNotBlank(),
-                modifier = Modifier
-                    .weight(1.35f)
-                    .automationTag("translate_button"),
+        } else {
+            Column(
+                modifier = barModifier,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    when {
-                        running -> "取消翻译"
-                        state.translatedText.isNotBlank() -> "重新翻译"
-                        else -> "翻译"
-                    },
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TranslationTargetButton(state, running, onChooseTarget, Modifier.weight(1f))
+                    TranslationPreferenceButton(state, running, onChoosePreference, Modifier.weight(1f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    TranslationSecondaryButton(state, running, onPaste, onCopy, Modifier.weight(1f))
+                    TranslationPrimaryButton(state, running, onPrimaryAction, Modifier.weight(1.35f))
+                }
             }
         }
     }
 }
+
+@Composable
+private fun TranslationTargetButton(
+    state: TranslationSessionState,
+    running: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = !running,
+        modifier = modifier.automationTag("target_selector"),
+    ) {
+        Text(
+            "目标 · ${state.targetLanguage.displayName}",
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun TranslationPreferenceButton(
+    state: TranslationSessionState,
+    running: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = !running,
+        modifier = modifier.automationTag("preference_selector"),
+    ) {
+        Text(
+            "风格 · ${state.preference.displayName}",
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun TranslationSecondaryButton(
+    state: TranslationSessionState,
+    running: Boolean,
+    onPaste: () -> Unit,
+    onCopy: () -> Unit,
+    modifier: Modifier,
+) {
+    OutlinedButton(
+        onClick = if (state.translatedText.isNotBlank()) onCopy else onPaste,
+        enabled = !running,
+        modifier = modifier,
+    ) {
+        Text(if (state.translatedText.isNotBlank()) "复制译文" else "粘贴原文")
+    }
+}
+
+@Composable
+private fun TranslationPrimaryButton(
+    state: TranslationSessionState,
+    running: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+) {
+    Button(
+        onClick = onClick,
+        enabled = running || state.sourceText.isNotBlank(),
+        modifier = modifier.automationTag("translate_button"),
+    ) {
+        Text(
+            when {
+                running -> "取消翻译"
+                state.translatedText.isNotBlank() -> "重新翻译"
+                else -> "翻译"
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TranslationOptionsSheet(
+    choice: TranslationChoice,
+    targetLanguage: TargetLanguage,
+    preference: TranslationPreference,
+    onDismiss: () -> Unit,
+    onSelectTarget: (TargetLanguage) -> Unit,
+    onSelectPreference: (TranslationPreference) -> Unit,
+) {
+    val title = if (choice == TranslationChoice.TARGET) "翻译成" else "翻译风格"
+    val helper = if (choice == TranslationChoice.TARGET) {
+        "选择本次翻译的目标语言"
+    } else {
+        "随时切换表达方式，不影响供应商配置"
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                helper,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val options = if (choice == TranslationChoice.TARGET) {
+                TargetLanguage.entries.map { option ->
+                    ChoiceOption(option.displayName, option == targetLanguage) { onSelectTarget(option) }
+                }
+            } else {
+                TranslationPreference.entries.map { option ->
+                    ChoiceOption(option.displayName, option == preference) { onSelectPreference(option) }
+                }
+            }
+            options.chunked(2).forEach { rowOptions ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    rowOptions.forEach { option ->
+                        FilterChip(
+                            selected = option.selected,
+                            onClick = option.onClick,
+                            label = { Text(option.label) },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        )
+                    }
+                    if (rowOptions.size == 1) Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+private data class ChoiceOption(
+    val label: String,
+    val selected: Boolean,
+    val onClick: () -> Unit,
+)
 
 private fun unicodeCharacterCount(text: String): Int = text.codePointCount(0, text.length)
 

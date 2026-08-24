@@ -46,6 +46,7 @@ class ProviderProfileRepositoryTest {
         val reloaded = ProviderProfileRepository(context, preferencesName).load()
 
         assertEquals(local.id, selected.currentProfileId)
+        assertEquals(listOf(cloud.id, local.id), selected.profiles.map { it.id })
         assertEquals(selected, reloaded)
         assertEquals("cloud-secret-key", reloaded.profiles.first().apiKey)
         assertEquals("private-route", reloaded.profiles.first().customHeaders.single().value)

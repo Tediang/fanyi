@@ -65,6 +65,7 @@ internal fun ProviderProfilesScreen(
     val testResults = remember { mutableStateMapOf<String, String>() }
     val testingIds = remember { mutableStateMapOf<String, Boolean>() }
     val scope = rememberCoroutineScope()
+    val currentProfile = catalog.currentProfile
 
     BackHandler(onBack = onBack)
     Scaffold(
@@ -92,7 +93,7 @@ internal fun ProviderProfilesScreen(
                     )
                 }
             }
-            if (catalog.currentProfile == null) {
+            if (currentProfile == null) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                 ) {
@@ -106,8 +107,10 @@ internal fun ProviderProfilesScreen(
                         color = MaterialTheme.colorScheme.onErrorContainer,
                     )
                 }
+            } else {
+                CurrentProviderSummary(currentProfile)
             }
-            catalog.profiles.sortedByDescending { it.id == catalog.currentProfileId }.forEach { profile ->
+            catalog.profiles.forEach { profile ->
                 ProviderProfileCard(
                     profile = profile,
                     isCurrent = profile.id == catalog.currentProfileId,
@@ -165,6 +168,36 @@ internal fun ProviderProfilesScreen(
 }
 
 @Composable
+private fun CurrentProviderSummary(profile: ProviderProfile) {
+    Card(
+        modifier = Modifier.fillMaxWidth().automationTag("current_provider_summary"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                "当前使用",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                profile.name,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                "${profile.protocolType.displayName} · ${profile.model}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ProviderProfileCard(
     profile: ProviderProfile,
     isCurrent: Boolean,
@@ -209,7 +242,7 @@ private fun ProviderProfileCard(
                         modifier = Modifier.automationTag("current_profile_${profile.id}"),
                     ) {
                         Text(
-                            "当前使用",
+                            "使用中",
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                         )

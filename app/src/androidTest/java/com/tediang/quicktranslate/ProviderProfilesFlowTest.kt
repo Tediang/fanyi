@@ -10,6 +10,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,13 +53,16 @@ class ProviderProfilesFlowTest {
             clickText("供应商")
             assertVisible("云端服务")
             assertVisible("本地服务")
+            assertResourceVisible("current_provider_summary")
             assertFalse(device.hasObject(By.textContains("must-never-appear")))
+            assertProfilesKeepCreationOrder()
 
             clickText("设为当前供应商")
 
             clickText("供应商")
             assertResourceVisible("current_profile_local")
             assertVisible("当前使用")
+            assertProfilesKeepCreationOrder()
         }
     }
 
@@ -113,6 +117,12 @@ class ProviderProfilesFlowTest {
             "Expected visible resource: $resource",
             device.wait(Until.findObject(By.res(resource)), TIMEOUT_MS),
         )
+    }
+
+    private fun assertProfilesKeepCreationOrder() {
+        val cloud = findResource("provider_card_cloud").visibleBounds
+        val local = findResource("provider_card_local").visibleBounds
+        assertTrue("Provider cards must remain in creation order", cloud.top < local.top)
     }
 
     private companion object {
