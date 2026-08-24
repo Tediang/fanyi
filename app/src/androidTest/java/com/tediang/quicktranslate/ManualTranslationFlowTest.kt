@@ -70,7 +70,7 @@ class ManualTranslationFlowTest {
 
         launchApp().use {
             inputSourceAndTranslate("Hello")
-            assertVisible("翻译完成")
+            assertVisible("翻译完成", prefix = true)
             assertVisible("你好")
             assertEquals("不要覆盖", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
             device.findObject(By.text("复制译文")).click()
@@ -119,7 +119,7 @@ class ManualTranslationFlowTest {
 
         launchApp().use {
             inputSourceAndTranslate("Hello")
-            assertVisible("翻译失败：凭据无效")
+            assertVisible("API Key 或鉴权信息无效")
         }
     }
 
@@ -143,8 +143,9 @@ class ManualTranslationFlowTest {
         button.click()
     }
 
-    private fun assertVisible(text: String) {
-        val node = device.wait(Until.findObject(By.text(text)), TIMEOUT_MS)
+    private fun assertVisible(text: String, prefix: Boolean = false) {
+        val selector = if (prefix) By.textStartsWith(text) else By.text(text)
+        val node = device.wait(Until.findObject(selector), TIMEOUT_MS)
         assertTrue("Expected visible text: $text", node != null)
     }
 

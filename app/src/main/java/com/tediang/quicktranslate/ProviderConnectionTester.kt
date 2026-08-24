@@ -6,7 +6,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -41,15 +40,24 @@ internal class ProviderConnectionTester(
     suspend fun test(profile: ProviderProfile): ConnectionTestResult = withContext(Dispatchers.IO) {
         try {
             ProfileNetworkPolicy.requireAllowed(profile)
+            val adapter = TranslationProtocolAdapters.forType(profile.protocolType)
+            val protocolRequest = adapter.buildRequest(
+                profile = profile.copy(streaming = false),
+                sourceText = "Connection test.",
+                targetLanguage = TargetLanguage.ENGLISH,
+            )
             val request = Request.Builder()
                 .url(profile.endpoint())
-                .post(probeBody(profile).toString().toRequestBody(JSON_MEDIA_TYPE))
-                .applyProfileHeaders(profile)
+                .post(protocolRequest.body.toRequestBody(JSON_MEDIA_TYPE))
+                .apply {
+                    protocolRequest.headers.forEach { (name, value) -> header(name, value) }
+                    profile.customHeaders.forEach { header(it.name, it.value) }
+                }
                 .build()
             httpClient.newCall(request).execute().use { response ->
                 val rawBody = response.body.string()
                 if (!response.isSuccessful) return@withContext classifyHttpFailure(response.code, rawBody)
-                if (isExpectedProtocolResponse(profile.protocolType, rawBody)) {
+                if (runCatching { adapter.parseSynchronous(rawBody).isNotBlank() }.getOrDefault(false)) {
                     ConnectionTestResult.Success()
                 } else {
                     ConnectionTestResult.Failure(
@@ -61,7 +69,14 @@ internal class ProviderConnectionTester(
         } catch (error: ProfileNetworkException) {
             ConnectionTestResult.Failure(error.problem, requireNotNull(error.message))
         } catch (error: IllegalArgumentException) {
-            ConnectionTestResult.Failure(ConnectionProblem.URL, "地址或请求头格式无效")
+            ConnectionTestResult.Failure(
+                if (error.message.orEmpty().contains("http", ignoreCase = true)) {
+                    ConnectionProblem.URL
+                } else {
+                    ConnectionProblem.PROTOCOL
+                },
+                error.message ?: "地址、参数或请求头格式无效",
+            )
         } catch (error: SSLException) {
             ConnectionTestResult.Failure(ConnectionProblem.CERTIFICATE, "TLS 证书或安全连接失败")
         } catch (error: SocketTimeoutException) {
@@ -73,44 +88,6 @@ internal class ProviderConnectionTester(
         } catch (error: Exception) {
             ConnectionTestResult.Failure(ConnectionProblem.NETWORK, error.message ?: "网络请求失败")
         }
-    }
-
-    private fun probeBody(profile: ProviderProfile): JSONObject = when (profile.protocolType) {
-        ProtocolType.OPENAI_CHAT_COMPLETIONS -> JSONObject()
-            .put("model", profile.model)
-            .put("stream", false)
-            .put(
-                "messages",
-                JSONArray().put(JSONObject().put("role", "user").put("content", "Reply with OK.")),
-            )
-
-        ProtocolType.OPENAI_RESPONSES -> JSONObject()
-            .put("model", profile.model)
-            .put("input", "Reply with OK.")
-            .put("stream", false)
-
-        ProtocolType.ANTHROPIC_MESSAGES -> JSONObject()
-            .put("model", profile.model)
-            .put("max_tokens", 8)
-            .put(
-                "messages",
-                JSONArray().put(JSONObject().put("role", "user").put("content", "Reply with OK.")),
-            )
-    }
-
-    private fun Request.Builder.applyProfileHeaders(profile: ProviderProfile): Request.Builder = apply {
-        header("Accept", "application/json")
-        when (profile.protocolType) {
-            ProtocolType.OPENAI_CHAT_COMPLETIONS,
-            ProtocolType.OPENAI_RESPONSES,
-            -> if (profile.apiKey.isNotBlank()) header("Authorization", "Bearer ${profile.apiKey}")
-
-            ProtocolType.ANTHROPIC_MESSAGES -> {
-                header("anthropic-version", "2023-06-01")
-                if (profile.apiKey.isNotBlank()) header("x-api-key", profile.apiKey)
-            }
-        }
-        profile.customHeaders.forEach { header(it.name, it.value) }
     }
 
     private fun classifyHttpFailure(status: Int, rawBody: String): ConnectionTestResult.Failure {
@@ -134,28 +111,17 @@ internal class ProviderConnectionTester(
         }
         return ConnectionTestResult.Failure(
             problem,
-            if (detail.isBlank()) "$prefix（HTTP $status）" else "$prefix：$detail",
+            "$prefix（HTTP $status）",
         )
     }
-
-    private fun isExpectedProtocolResponse(protocol: ProtocolType, rawBody: String): Boolean = runCatching {
-        val json = JSONObject(rawBody)
-        when (protocol) {
-            ProtocolType.OPENAI_CHAT_COMPLETIONS -> json.optJSONArray("choices") != null
-            ProtocolType.OPENAI_RESPONSES ->
-                json.optString("object") == "response" || json.has("output") || json.has("output_text")
-            ProtocolType.ANTHROPIC_MESSAGES ->
-                json.optString("type") == "message" && json.optJSONArray("content") != null
-        }
-    }.getOrDefault(false)
 
     private fun extractErrorMessage(rawBody: String): String = runCatching {
         val json = JSONObject(rawBody)
         val error = json.opt("error")
         when (error) {
-            is JSONObject -> error.optString("message")
+            is JSONObject -> error.opt("message") as? String ?: ""
             is String -> error
-            else -> json.optString("message")
+            else -> json.opt("message") as? String ?: ""
         }
     }.getOrDefault("")
 

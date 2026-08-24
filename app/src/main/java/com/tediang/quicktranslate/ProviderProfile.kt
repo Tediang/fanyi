@@ -16,6 +16,14 @@ internal data class CustomHeader(
     val value: String,
 )
 
+internal enum class ReasoningEffort(val displayName: String) {
+    AUTO("自动"),
+    OFF("关闭"),
+    LOW("低"),
+    MEDIUM("中"),
+    HIGH("高"),
+}
+
 internal data class ProviderProfile(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -26,6 +34,13 @@ internal data class ProviderProfile(
     val model: String,
     val customHeaders: List<CustomHeader> = emptyList(),
     val allowCleartext: Boolean = false,
+    val additionalRequirements: String = "",
+    val reasoningEffort: ReasoningEffort = ReasoningEffort.AUTO,
+    val temperature: Double? = null,
+    val maxOutputTokens: Int? = null,
+    val streaming: Boolean = true,
+    val extraBody: String = "",
+    val inputLimit: Int = DEFAULT_INPUT_LIMIT,
 ) {
     fun endpoint(): String {
         val path = endpointPathOverride.trim().ifBlank { protocolType.defaultPath }
@@ -37,6 +52,10 @@ internal data class ProviderProfile(
         } else {
             normalizedBase + normalizedPath
         }
+    }
+
+    companion object {
+        const val DEFAULT_INPUT_LIMIT = 20_000
     }
 }
 

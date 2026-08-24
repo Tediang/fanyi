@@ -55,7 +55,6 @@ class ProviderProfilesFlowTest {
             assertFalse(device.hasObject(By.textContains("must-never-appear")))
 
             clickText("设为当前")
-            clickText("返回")
 
             assertVisible("本地服务 · local-model")
         }

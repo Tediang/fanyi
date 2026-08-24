@@ -3,7 +3,7 @@ package com.tediang.quicktranslate
 import android.content.Intent
 import android.net.Uri
 
-private const val ACTION_TRANSLATE_CLIPBOARD =
+private const val DIAGNOSTIC_ACTION_TRANSLATE_CLIPBOARD =
     "com.tediang.quicktranslate.action.TRANSLATE_CLIPBOARD"
 
 internal data class DiagnosticEntry(
@@ -25,11 +25,11 @@ internal data class DiagnosticEntry(
         )
 
         fun from(intent: Intent?): DiagnosticEntry {
-            if (intent?.action == ACTION_TRANSLATE_CLIPBOARD) {
+            if (intent?.action == DIAGNOSTIC_ACTION_TRANSLATE_CLIPBOARD) {
                 return DiagnosticEntry(
                     title = "快捷键翻译",
                     text = "诊断版未读取剪贴板",
-                    action = ACTION_TRANSLATE_CLIPBOARD,
+                    action = DIAGNOSTIC_ACTION_TRANSLATE_CLIPBOARD,
                     mimeType = "—",
                     textMode = "待接入",
                     contentKind = "剪贴板文本",

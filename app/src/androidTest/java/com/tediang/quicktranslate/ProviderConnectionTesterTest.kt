@@ -6,6 +6,7 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -63,7 +64,11 @@ class ProviderConnectionTesterTest {
     fun distinguishesUrlAuthenticationModelAndProtocolFailures() = runBlocking {
         val tester = ProviderConnectionTester()
         server.enqueue(MockResponse.Builder().code(404).body("{\"error\":{\"message\":\"not found\"}}").build())
-        server.enqueue(MockResponse.Builder().code(401).body("{\"error\":{\"message\":\"bad key\"}}").build())
+        server.enqueue(
+            MockResponse.Builder().code(401)
+                .body("{\"error\":{\"message\":\"bad key never-in-visible-error\"}}")
+                .build(),
+        )
         server.enqueue(MockResponse.Builder().code(400).body("{\"error\":{\"message\":\"model not found\"}}").build())
         server.enqueue(MockResponse.Builder().code(200).body("{\"unexpected\":true}").build())
 
@@ -74,8 +79,37 @@ class ProviderConnectionTesterTest {
 
         assertEquals(ConnectionProblem.URL, url.problem)
         assertEquals(ConnectionProblem.AUTHENTICATION, auth.problem)
+        assertFalse(auth.message.contains("never-in-visible-error"))
         assertEquals(ConnectionProblem.MODEL, model.problem)
         assertEquals(ConnectionProblem.PROTOCOL, protocol.problem)
+    }
+
+    @Test
+    fun validatesResponsesAndAnthropicUsingTheirRealRequestSemantics() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body("{\"status\":\"completed\",\"output\":[{\"content\":[{\"type\":\"output_text\",\"text\":\"OK\"}]}]}")
+                .build(),
+        )
+        server.enqueue(
+            MockResponse.Builder()
+                .body("{\"type\":\"message\",\"content\":[{\"type\":\"text\",\"text\":\"OK\"}],\"stop_reason\":\"end_turn\"}")
+                .build(),
+        )
+        val tester = ProviderConnectionTester()
+        val responses = profile(allowCleartext = true).copy(protocolType = ProtocolType.OPENAI_RESPONSES)
+        val anthropic = profile(allowCleartext = true, apiKey = "anthropic-secret")
+            .copy(protocolType = ProtocolType.ANTHROPIC_MESSAGES)
+
+        assertTrue(tester.test(responses) is ConnectionTestResult.Success)
+        assertTrue(tester.test(anthropic) is ConnectionTestResult.Success)
+
+        val responsesRequest = server.takeRequest()
+        val anthropicRequest = server.takeRequest()
+        assertEquals("/v1/responses", responsesRequest.url.encodedPath)
+        assertEquals("/v1/messages", anthropicRequest.url.encodedPath)
+        assertEquals("anthropic-secret", anthropicRequest.headers["x-api-key"])
+        assertEquals("2023-06-01", anthropicRequest.headers["anthropic-version"])
     }
 
     private fun profile(

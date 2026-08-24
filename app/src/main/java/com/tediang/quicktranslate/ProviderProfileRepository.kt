@@ -79,6 +79,13 @@ internal class ProviderProfileRepository(
                     .put("endpoint_path", profile.endpointPathOverride)
                     .put("model", profile.model)
                     .put("allow_cleartext", profile.allowCleartext)
+                    .put("additional_requirements", profile.additionalRequirements)
+                    .put("reasoning_effort", profile.reasoningEffort.name)
+                    .put("temperature", profile.temperature ?: JSONObject.NULL)
+                    .put("max_output_tokens", profile.maxOutputTokens ?: JSONObject.NULL)
+                    .put("streaming", profile.streaming)
+                    .put("extra_body", profile.extraBody)
+                    .put("input_limit", profile.inputLimit)
                     .put(
                         "header_names",
                         JSONArray().apply { profile.customHeaders.forEach { put(it.name) } },
@@ -121,6 +128,17 @@ internal class ProviderProfileRepository(
                             }
                         },
                         allowCleartext = stored.optBoolean("allow_cleartext"),
+                        additionalRequirements = stored.opt("additional_requirements") as? String ?: "",
+                        reasoningEffort = runCatching {
+                            ReasoningEffort.valueOf(stored.opt("reasoning_effort") as? String ?: "AUTO")
+                        }.getOrDefault(ReasoningEffort.AUTO),
+                        temperature = (stored.opt("temperature").takeUnless { it == JSONObject.NULL } as? Number)
+                            ?.toDouble(),
+                        maxOutputTokens = (stored.opt("max_output_tokens").takeUnless { it == JSONObject.NULL } as? Number)
+                            ?.toInt(),
+                        streaming = if (stored.has("streaming")) stored.optBoolean("streaming") else true,
+                        extraBody = stored.opt("extra_body") as? String ?: "",
+                        inputLimit = stored.optInt("input_limit", ProviderProfile.DEFAULT_INPUT_LIMIT),
                     ),
                 )
             }

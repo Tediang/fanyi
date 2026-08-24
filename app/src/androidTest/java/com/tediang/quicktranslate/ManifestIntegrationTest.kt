@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -46,5 +47,19 @@ class ManifestIntegrationTest {
             "com.tediang.quicktranslate.action.TRANSLATE_CLIPBOARD",
             shortcut.intent?.action,
         )
+    }
+
+    @Test
+    fun manifestDoesNotRequestHighPrivilegeCaptureOrOverlayCapabilities() {
+        val requested = packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()),
+        ).requestedPermissions.orEmpty().toSet()
+
+        assertTrue("android.permission.INTERNET" in requested)
+        assertFalse("android.permission.SYSTEM_ALERT_WINDOW" in requested)
+        assertFalse("android.permission.BIND_ACCESSIBILITY_SERVICE" in requested)
+        assertFalse("android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" in requested)
+        assertFalse("android.permission.CAPTURE_VIDEO_OUTPUT" in requested)
     }
 }

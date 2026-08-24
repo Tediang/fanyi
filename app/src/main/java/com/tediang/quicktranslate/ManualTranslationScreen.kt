@@ -3,7 +3,6 @@ package com.tediang.quicktranslate
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,13 +26,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -46,17 +50,43 @@ import kotlinx.coroutines.launch
 private enum class AppSurface { TRANSLATE, PROFILES, EDIT_PROFILE }
 
 @Composable
-internal fun ManualTranslationApp(
+internal fun QuickTranslateApp(
     profileRepository: ProviderProfileRepository,
-    client: ChatCompletionsClient,
+    gateway: TranslationGateway,
     connectionTester: ProviderConnectionTester,
+    launch: TranslationLaunch,
     onClose: () -> Unit,
 ) {
     var catalog by remember { mutableStateOf(profileRepository.load()) }
+    val sessionScope = rememberCoroutineScope()
+    val controller = remember(launch.id) {
+        TranslationSessionController(gateway, sessionScope, launch.sourceText, launch.id)
+    }
+    var autoStarted by remember(launch.id) { mutableStateOf(false) }
     var surface by rememberSaveable {
         mutableStateOf(if (catalog.currentProfile == null) AppSurface.PROFILES else AppSurface.TRANSLATE)
     }
     var editingProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var resumeAfterTestProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    DisposableEffect(controller) { onDispose { controller.dispose() } }
+
+    LaunchedEffect(launch.id) {
+        withFrameNanos { }
+        LaunchPerformance.markUiVisible(launch.id)
+        surface = if (catalog.currentProfile == null) AppSurface.PROFILES else AppSurface.TRANSLATE
+        if (catalog.currentProfile == null && launch.autoTranslate) resumeAfterTestProfileId = PENDING_PROFILE
+    }
+    LaunchedEffect(launch.id, catalog.currentProfileId, surface) {
+        val current = catalog.currentProfile
+        if (
+            surface == AppSurface.TRANSLATE && launch.autoTranslate && !autoStarted &&
+            current != null && controller.state.value.sourceText.isNotBlank()
+        ) {
+            autoStarted = true
+            controller.start(current)
+        }
+    }
 
     when (surface) {
         AppSurface.TRANSLATE -> {
@@ -64,9 +94,10 @@ internal fun ManualTranslationApp(
             if (current == null) {
                 surface = AppSurface.PROFILES
             } else {
-                ProviderTranslationScreen(
+                TranslationSessionScreen(
+                    launch = launch,
                     profile = current,
-                    client = client,
+                    controller = controller,
                     onOpenProfiles = { surface = AppSurface.PROFILES },
                     onClose = onClose,
                 )
@@ -76,8 +107,15 @@ internal fun ManualTranslationApp(
         AppSurface.PROFILES -> ProviderProfilesScreen(
             catalog = catalog,
             connectionTester = connectionTester,
+            resumeAfterTestProfileId = resumeAfterTestProfileId.takeUnless { it == PENDING_PROFILE },
             onBack = {
-                if (catalog.currentProfile != null) surface = AppSurface.TRANSLATE else onClose()
+                if (resumeAfterTestProfileId != null) {
+                    onClose()
+                } else if (catalog.currentProfile != null) {
+                    surface = AppSurface.TRANSLATE
+                } else {
+                    onClose()
+                }
             },
             onAdd = {
                 editingProfileId = null
@@ -87,8 +125,18 @@ internal fun ManualTranslationApp(
                 editingProfileId = it
                 surface = AppSurface.EDIT_PROFILE
             },
-            onSelect = { catalog = profileRepository.select(it) },
+            onSelect = {
+                catalog = profileRepository.select(it)
+                if (resumeAfterTestProfileId == null) surface = AppSurface.TRANSLATE
+            },
             onDelete = { catalog = profileRepository.delete(it) },
+            onTestSuccess = { profileId ->
+                if (resumeAfterTestProfileId == profileId) {
+                    catalog = profileRepository.select(profileId)
+                    resumeAfterTestProfileId = null
+                    surface = AppSurface.TRANSLATE
+                }
+            },
         )
 
         AppSurface.EDIT_PROFILE -> {
@@ -100,7 +148,12 @@ internal fun ManualTranslationApp(
                 onSave = { profile ->
                     val selectSaved = catalog.currentProfile == null
                     catalog = profileRepository.save(profile, makeCurrent = selectSaved)
-                    surface = if (selectSaved) AppSurface.TRANSLATE else AppSurface.PROFILES
+                    if (resumeAfterTestProfileId == PENDING_PROFILE) {
+                        resumeAfterTestProfileId = profile.id
+                        surface = AppSurface.PROFILES
+                    } else {
+                        surface = if (selectSaved) AppSurface.TRANSLATE else AppSurface.PROFILES
+                    }
                 },
             )
         }
@@ -109,29 +162,30 @@ internal fun ManualTranslationApp(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProviderTranslationScreen(
+private fun TranslationSessionScreen(
+    launch: TranslationLaunch,
     profile: ProviderProfile,
-    client: ChatCompletionsClient,
+    controller: TranslationSessionController,
     onOpenProfiles: () -> Unit,
     onClose: () -> Unit,
 ) {
-    var sourceText by rememberSaveable { mutableStateOf("") }
-    var result by rememberSaveable { mutableStateOf("") }
-    var status by rememberSaveable { mutableStateOf("等待输入") }
-    var loading by rememberSaveable { mutableStateOf(false) }
-    var sourceError by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
+    val focusRequester = remember { FocusRequester() }
+    val state by controller.state.collectAsState()
+    LaunchedEffect(launch.id, launch.focusInput) {
+        if (launch.focusInput) focusRequester.requestFocus()
+    }
 
-    BackHandler(onBack = onClose)
+    val running = state.progress is TranslationProgress.Running
     Scaffold(
         modifier = Modifier.semantics { testTagsAsResourceId = true },
         topBar = {
             TopAppBar(
-                title = { Text("快译") },
+                title = { Text(launch.entry.title) },
                 navigationIcon = { TextButton(onClick = onClose) { Text("关闭") } },
-                actions = { TextButton(onClick = onOpenProfiles, enabled = !loading) { Text("供应商") } },
+                actions = { TextButton(onClick = onOpenProfiles, enabled = !running) { Text("供应商") } },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -155,74 +209,109 @@ private fun ProviderTranslationScreen(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedTextField(
-                value = sourceText,
-                onValueChange = {
-                    sourceText = it
-                    if (it.isNotBlank()) sourceError = false
-                },
-                label = { Text("原文") },
-                placeholder = { Text("输入或粘贴要翻译的文字") },
-                supportingText = if (sourceError) ({ Text("请输入要翻译的文字") }) else null,
-                isError = sourceError,
-                minLines = 4,
-                modifier = Modifier.fillMaxWidth().automationTag("source_text"),
-            )
-            Button(
-                onClick = {
-                    if (sourceText.isBlank()) {
-                        sourceError = true
-                        return@Button
-                    }
-                    if (profile.protocolType != ProtocolType.OPENAI_CHAT_COMPLETIONS) {
-                        status = "翻译失败：${profile.protocolType.displayName} 翻译适配器将在后续工单接入"
-                        return@Button
-                    }
-                    loading = true
-                    result = ""
-                    status = "正在连接…"
-                    scope.launch {
-                        runCatching {
-                            client.translate(profile, sourceText.trim()) { delta ->
-                                result += delta
-                                status = "正在翻译…"
-                            }
-                        }.onSuccess { status = "翻译完成" }
-                            .onFailure { status = "翻译失败：${it.message ?: "未知错误"}" }
-                        loading = false
-                    }
-                },
-                enabled = !loading,
-                modifier = Modifier.fillMaxWidth().automationTag("translate_button"),
-            ) {
-                if (loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(end = 10.dp),
-                        strokeWidth = 2.dp,
-                    )
-                }
-                Text(if (loading) "翻译中" else "翻译")
+            if (launch.urlOnly) StatusBanner("收到的是 URL；快译不会抓取网页或帖子正文。")
+            if (launch.readOnlyFromHost) {
+                Text(
+                    "宿主标记为只读；译文不会替换原应用中的文字。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            TranslationResultCard(status = status, result = result)
+
+            OutlinedTextField(
+                value = state.sourceText,
+                onValueChange = controller::updateSource,
+                label = { Text("原文") },
+                minLines = 4,
+                maxLines = 10,
+                enabled = !running,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .automationTag("source_text"),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TargetLanguage.entries.forEach { target ->
+                    if (state.targetLanguage == target) {
+                        Button(
+                            onClick = { controller.selectTarget(target) },
+                            enabled = !running,
+                            modifier = Modifier.weight(1f),
+                        ) { Text(target.displayName) }
+                    } else {
+                        OutlinedButton(
+                            onClick = { controller.selectTarget(target) },
+                            enabled = !running,
+                            modifier = Modifier.weight(1f),
+                        ) { Text(target.displayName) }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Button(
+                    onClick = { if (running) controller.cancel() else controller.start(profile) },
+                    modifier = Modifier.weight(1f).automationTag("translate_button"),
+                ) { Text(if (running) "取消" else "翻译") }
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                        val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)?.text?.toString().orEmpty()
+                        if (text.isNotBlank()) controller.updateSource(text)
+                    },
+                    enabled = !running,
+                    modifier = Modifier.weight(1f),
+                ) { Text("粘贴") }
+            }
+
+            TranslationResultCard(state)
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 OutlinedButton(
                     onClick = {
-                        copyTranslation(context, result)
-                        scope.launch { snackbarHostState.showSnackbar("已复制译文") }
+                        copyText(context, "快译译文", state.translatedText)
+                        scope.launch { snackbarHostState.showSnackbar("译文已复制") }
                     },
-                    enabled = result.isNotBlank() && !loading,
+                    enabled = state.translatedText.isNotBlank() && !running,
                     modifier = Modifier.weight(1f),
                 ) { Text("复制译文") }
                 OutlinedButton(
+                    onClick = { controller.start(profile) },
+                    enabled = state.sourceText.isNotBlank() && !running,
+                    modifier = Modifier.weight(1f),
+                ) { Text("重试") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val diagnostics = when (val progress = state.progress) {
+                    is TranslationProgress.Completed -> progress.diagnostics
+                    is TranslationProgress.Failed -> progress.diagnostics
+                    else -> null
+                }
+                OutlinedButton(
                     onClick = {
-                        sourceText = ""
-                        result = ""
-                        status = "等待输入"
+                        diagnostics?.let { copyText(context, "快译脱敏诊断", it.asSanitizedText()) }
+                        scope.launch { snackbarHostState.showSnackbar("脱敏诊断已复制") }
                     },
-                    enabled = !loading && (sourceText.isNotEmpty() || result.isNotEmpty()),
+                    enabled = diagnostics != null && !running,
+                    modifier = Modifier.weight(1f),
+                ) { Text("复制诊断") }
+                TextButton(
+                    onClick = controller::clear,
+                    enabled = !running && (state.sourceText.isNotEmpty() || state.translatedText.isNotEmpty()),
                     modifier = Modifier.weight(1f),
                 ) { Text("清空") }
             }
@@ -231,35 +320,50 @@ private fun ProviderTranslationScreen(
 }
 
 @Composable
-private fun TranslationResultCard(status: String, result: String) {
+private fun TranslationResultCard(state: TranslationSessionState) {
+    val status = when (val progress = state.progress) {
+        TranslationProgress.Idle -> "等待输入"
+        TranslationProgress.Running -> if (state.translatedText.isEmpty()) "正在连接…" else "正在翻译…"
+        is TranslationProgress.Completed -> "翻译完成 · ${progress.diagnostics.totalMs}ms"
+        is TranslationProgress.Failed -> if (progress.incomplete) "结果不完整：${progress.message}" else progress.message
+        TranslationProgress.Cancelled -> "已取消"
+    }
+    val error = state.progress is TranslationProgress.Failed
     Card(
         modifier = Modifier.fillMaxWidth().automationTag("translation_result"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder(),
+        colors = if (error) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        } else {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        },
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(status, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(status, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                result.ifBlank { "译文会显示在这里" },
+                state.translatedText.ifBlank { "译文会显示在这里" },
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (result.isBlank()) FontWeight.Normal else FontWeight.Medium,
-                color = if (result.isBlank()) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+                modifier = Modifier.automationTag("translation_text"),
             )
         }
     }
 }
 
-private fun copyTranslation(context: Context, text: String) {
+@Composable
+private fun StatusBanner(text: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Text(text, modifier = Modifier.padding(14.dp), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun copyText(context: Context, label: String, text: String) {
     context.getSystemService(ClipboardManager::class.java)
-        .setPrimaryClip(ClipData.newPlainText("快译译文", text))
+        .setPrimaryClip(ClipData.newPlainText(label, text))
 }
 
 internal fun Modifier.automationTag(tag: String): Modifier =
     testTag(tag).semantics { testTagsAsResourceId = true }
+
+private const val PENDING_PROFILE = "__pending__"
