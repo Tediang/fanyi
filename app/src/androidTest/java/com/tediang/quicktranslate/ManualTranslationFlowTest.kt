@@ -70,8 +70,10 @@ class ManualTranslationFlowTest {
 
         launchApp().use {
             inputSourceAndTranslate("Hello")
+            assertVisible("5 字")
             assertVisible("翻译完成", prefix = true)
             assertVisible("你好")
+            assertVisible("2 字")
             assertEquals("不要覆盖", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
             device.findObject(By.text("复制译文")).click()
             assertEquals("你好", clipboard.primaryClip?.getItemAt(0)?.text?.toString())

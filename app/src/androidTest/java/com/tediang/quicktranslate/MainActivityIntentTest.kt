@@ -59,8 +59,9 @@ class MainActivityIntentTest {
 
         launch(Intent.ACTION_MAIN).use {
             assertVisible("快译")
-            assertVisible("测试服务 · test-model")
             assertVisible("等待输入")
+            assertVisible("暂无译文")
+            assertNotVisible("测试服务 · test-model")
             assertEquals(0, server.requestCount)
         }
     }
@@ -77,7 +78,7 @@ class MainActivityIntentTest {
         ActivityScenario.launch<MainActivity>(intent).use {
             assertVisible("选词翻译")
             assertVisible("The battery stores energy.")
-            assertVisible("宿主标记为只读；译文不会替换原应用中的文字。")
+            assertVisible("原文来自只读选区；快译只翻译，不会修改原应用内容。")
             assertVisible("电池储存能量。")
             assertVisible("翻译完成", prefix = true)
         }

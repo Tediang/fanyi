@@ -54,9 +54,32 @@ class ProviderProfilesFlowTest {
             assertVisible("本地服务")
             assertFalse(device.hasObject(By.textContains("must-never-appear")))
 
-            clickText("设为当前")
+            clickText("设为当前供应商")
 
-            assertVisible("本地服务 · local-model")
+            clickText("供应商")
+            assertResourceVisible("current_profile_local")
+            assertVisible("当前使用")
+        }
+    }
+
+    @Test
+    fun keepsSaveActionReachableAndConfirmsDiscardingChangedDraft() {
+        launchApp().use {
+            clickText("供应商")
+            clickText("新增")
+
+            assertResourceVisible("save_profile")
+            findResource("profile_name").text = "尚未保存的服务"
+            clickText("取消")
+
+            assertVisible("放弃未保存的修改？")
+            clickText("继续编辑")
+            assertVisible("尚未保存的服务")
+
+            clickText("取消")
+            assertVisible("放弃未保存的修改？")
+            clickText("放弃修改")
+            assertVisible("供应商配置")
         }
     }
 
@@ -77,6 +100,17 @@ class ProviderProfilesFlowTest {
         assertNotNull(
             "Expected visible text: $text",
             device.wait(Until.findObject(By.text(text)), TIMEOUT_MS),
+        )
+    }
+
+    private fun findResource(resource: String) = requireNotNull(
+        device.wait(Until.findObject(By.res(resource)), TIMEOUT_MS),
+    ) { "Expected resource: $resource" }
+
+    private fun assertResourceVisible(resource: String) {
+        assertNotNull(
+            "Expected visible resource: $resource",
+            device.wait(Until.findObject(By.res(resource)), TIMEOUT_MS),
         )
     }
 

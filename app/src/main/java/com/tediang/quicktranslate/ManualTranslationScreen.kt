@@ -3,15 +3,20 @@ package com.tediang.quicktranslate
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -22,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -179,8 +185,15 @@ private fun TranslationSessionScreen(
     }
 
     val running = state.progress is TranslationProgress.Running
+    val diagnostics = when (val progress = state.progress) {
+        is TranslationProgress.Completed -> progress.diagnostics
+        is TranslationProgress.Failed -> progress.diagnostics
+        else -> null
+    }
     Scaffold(
-        modifier = Modifier.semantics { testTagsAsResourceId = true },
+        modifier = Modifier
+            .semantics { testTagsAsResourceId = true }
+            .imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(launch.entry.title) },
@@ -189,138 +202,160 @@ private fun TranslationSessionScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            TranslationActionBar(
+                state = state,
+                running = running,
+                onPaste = {
+                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                    val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
+                        ?.getItemAt(0)?.text?.toString().orEmpty()
+                    if (text.isNotBlank()) controller.updateSource(text)
+                },
+                onCopy = {
+                    copyText(context, "快译译文", state.translatedText)
+                    scope.launch { snackbarHostState.showSnackbar("译文已复制") }
+                },
+                onPrimaryAction = {
+                    if (running) controller.cancel() else controller.start(profile)
+                },
+            )
+        },
     ) { contentPadding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(contentPadding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(contentPadding),
         ) {
-            Text(
-                "${profile.name} · ${profile.model}",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                profile.protocolType.displayName,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (launch.urlOnly) StatusBanner("收到的是 URL；快译不会抓取网页或帖子正文。")
-            if (launch.readOnlyFromHost) {
+            val compact = maxHeight < 640.dp
+            val sourceMinHeight = if (compact) 128.dp else 168.dp
+            val sourceMaxHeight = if (compact) 190.dp else 260.dp
+            val resultMinHeight = if (compact) 144.dp else 184.dp
+            val resultMaxHeight = if (compact) 220.dp else 320.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (launch.urlOnly) StatusBanner("收到的是 URL；快译不会抓取网页或帖子正文。")
+                if (launch.readOnlyFromHost) {
+                    Text(
+                        "原文来自只读选区；快译只翻译，不会修改原应用内容。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                OutlinedTextField(
+                    value = state.sourceText,
+                    onValueChange = controller::updateSource,
+                    label = { Text("原文") },
+                    supportingText = {
+                        CharacterCount(state.sourceText)
+                    },
+                    minLines = 5,
+                    maxLines = 14,
+                    enabled = !running,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = sourceMinHeight, max = sourceMaxHeight)
+                        .focusRequester(focusRequester)
+                        .automationTag("source_text"),
+                )
+
                 Text(
-                    "宿主标记为只读；译文不会替换原应用中的文字。",
-                    style = MaterialTheme.typography.bodySmall,
+                    "目标语言",
+                    style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-
-            OutlinedTextField(
-                value = state.sourceText,
-                onValueChange = controller::updateSource,
-                label = { Text("原文") },
-                minLines = 4,
-                maxLines = 10,
-                enabled = !running,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .automationTag("source_text"),
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                TargetLanguage.entries.forEach { target ->
-                    if (state.targetLanguage == target) {
-                        Button(
-                            onClick = { controller.selectTarget(target) },
-                            enabled = !running,
-                            modifier = Modifier.weight(1f),
-                        ) { Text(target.displayName) }
-                    } else {
-                        OutlinedButton(
-                            onClick = { controller.selectTarget(target) },
-                            enabled = !running,
-                            modifier = Modifier.weight(1f),
-                        ) { Text(target.displayName) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TargetLanguage.entries.forEach { target ->
+                        if (state.targetLanguage == target) {
+                            Button(
+                                onClick = { controller.selectTarget(target) },
+                                enabled = !running,
+                                modifier = Modifier.weight(1f),
+                            ) { Text(target.displayName) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { controller.selectTarget(target) },
+                                enabled = !running,
+                                modifier = Modifier.weight(1f),
+                            ) { Text(target.displayName) }
+                        }
                     }
                 }
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Button(
-                    onClick = { if (running) controller.cancel() else controller.start(profile) },
-                    modifier = Modifier.weight(1f).automationTag("translate_button"),
-                ) { Text(if (running) "取消" else "翻译") }
-                OutlinedButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(ClipboardManager::class.java)
-                        val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
-                            ?.getItemAt(0)?.text?.toString().orEmpty()
-                        if (text.isNotBlank()) controller.updateSource(text)
+                TranslationResultCard(
+                    state = state,
+                    minHeight = resultMinHeight,
+                    maxHeight = resultMaxHeight,
+                    onCopyDiagnostics = diagnostics?.takeIf { state.progress is TranslationProgress.Failed }?.let {
+                        {
+                            copyText(context, "快译脱敏诊断", it.asSanitizedText())
+                            scope.launch { snackbarHostState.showSnackbar("脱敏诊断已复制") }
+                        }
                     },
-                    enabled = !running,
-                    modifier = Modifier.weight(1f),
-                ) { Text("粘贴") }
-            }
-
-            TranslationResultCard(state)
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        copyText(context, "快译译文", state.translatedText)
-                        scope.launch { snackbarHostState.showSnackbar("译文已复制") }
-                    },
-                    enabled = state.translatedText.isNotBlank() && !running,
-                    modifier = Modifier.weight(1f),
-                ) { Text("复制译文") }
-                OutlinedButton(
-                    onClick = { controller.start(profile) },
-                    enabled = state.sourceText.isNotBlank() && !running,
-                    modifier = Modifier.weight(1f),
-                ) { Text("重试") }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                val diagnostics = when (val progress = state.progress) {
-                    is TranslationProgress.Completed -> progress.diagnostics
-                    is TranslationProgress.Failed -> progress.diagnostics
-                    else -> null
-                }
-                OutlinedButton(
-                    onClick = {
-                        diagnostics?.let { copyText(context, "快译脱敏诊断", it.asSanitizedText()) }
-                        scope.launch { snackbarHostState.showSnackbar("脱敏诊断已复制") }
-                    },
-                    enabled = diagnostics != null && !running,
-                    modifier = Modifier.weight(1f),
-                ) { Text("复制诊断") }
-                TextButton(
-                    onClick = controller::clear,
-                    enabled = !running && (state.sourceText.isNotEmpty() || state.translatedText.isNotEmpty()),
-                    modifier = Modifier.weight(1f),
-                ) { Text("清空") }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun TranslationResultCard(state: TranslationSessionState) {
+private fun TranslationActionBar(
+    state: TranslationSessionState,
+    running: Boolean,
+    onPaste: () -> Unit,
+    onCopy: () -> Unit,
+    onPrimaryAction: () -> Unit,
+) {
+    Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            OutlinedButton(
+                onClick = if (state.translatedText.isNotBlank()) onCopy else onPaste,
+                enabled = !running,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(if (state.translatedText.isNotBlank()) "复制译文" else "粘贴原文")
+            }
+            Button(
+                onClick = onPrimaryAction,
+                enabled = running || state.sourceText.isNotBlank(),
+                modifier = Modifier
+                    .weight(1.35f)
+                    .automationTag("translate_button"),
+            ) {
+                Text(
+                    when {
+                        running -> "取消翻译"
+                        state.translatedText.isNotBlank() -> "重新翻译"
+                        else -> "翻译"
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranslationResultCard(
+    state: TranslationSessionState,
+    minHeight: androidx.compose.ui.unit.Dp,
+    maxHeight: androidx.compose.ui.unit.Dp,
+    onCopyDiagnostics: (() -> Unit)?,
+) {
     val status = when (val progress = state.progress) {
         TranslationProgress.Idle -> "等待输入"
         TranslationProgress.Running -> if (state.translatedText.isEmpty()) "正在连接…" else "正在翻译…"
@@ -329,6 +364,16 @@ private fun TranslationResultCard(state: TranslationSessionState) {
         TranslationProgress.Cancelled -> "已取消"
     }
     val error = state.progress is TranslationProgress.Failed
+    val resultContentColor = if (error) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val resultMutedColor = if (error) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Card(
         modifier = Modifier.fillMaxWidth().automationTag("translation_result"),
         colors = if (error) {
@@ -338,18 +383,66 @@ private fun TranslationResultCard(state: TranslationSessionState) {
         },
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(status, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("译文", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${unicodeCharacterCount(state.translatedText)} 字",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = resultMutedColor,
+                    modifier = Modifier.automationTag("translation_count"),
+                )
+            }
             Text(
-                state.translatedText.ifBlank { "译文会显示在这里" },
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.automationTag("translation_text"),
+                status,
+                style = MaterialTheme.typography.bodySmall,
+                color = resultMutedColor,
             )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = minHeight, max = maxHeight)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                SelectionContainer {
+                    Text(
+                        state.translatedText.ifBlank { "暂无译文" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (state.translatedText.isBlank()) {
+                            resultMutedColor
+                        } else {
+                            resultContentColor
+                        },
+                        modifier = Modifier.automationTag("translation_text"),
+                    )
+                }
+            }
+            onCopyDiagnostics?.let {
+                TextButton(onClick = it) { Text("复制脱敏诊断") }
+            }
         }
     }
 }
+
+@Composable
+private fun CharacterCount(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Text(
+            "${unicodeCharacterCount(text)} 字",
+            modifier = Modifier.automationTag("source_count"),
+        )
+    }
+}
+
+private fun unicodeCharacterCount(text: String): Int = text.codePointCount(0, text.length)
 
 @Composable
 private fun StatusBanner(text: String) {

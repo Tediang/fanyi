@@ -2,6 +2,7 @@ package com.tediang.quicktranslate
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -104,7 +107,7 @@ internal fun ProviderProfilesScreen(
                     )
                 }
             }
-            catalog.profiles.forEach { profile ->
+            catalog.profiles.sortedByDescending { it.id == catalog.currentProfileId }.forEach { profile ->
                 ProviderProfileCard(
                     profile = profile,
                     isCurrent = profile.id == catalog.currentProfileId,
@@ -173,9 +176,21 @@ private fun ProviderProfileCard(
     onTest: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        border = CardDefaults.outlinedCardBorder(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .automationTag("provider_card_${profile.id}"),
+        border = if (isCurrent) {
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            CardDefaults.outlinedCardBorder()
+        },
+        colors = CardDefaults.cardColors(
+            containerColor = if (isCurrent) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -186,11 +201,20 @@ private fun ProviderProfileCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(profile.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (isCurrent) "当前" else "未选中",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (isCurrent) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.automationTag("current_profile_${profile.id}"),
+                    ) {
+                        Text(
+                            "当前使用",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        )
+                    }
+                }
             }
             Text("${profile.protocolType.displayName} · ${profile.model}")
             Text(
@@ -206,14 +230,21 @@ private fun ProviderProfileCard(
                 )
             }
             testResult?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!isCurrent) TextButton(onClick = onSelect) { Text("设为当前") }
-                TextButton(
+            if (!isCurrent) {
+                Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("设为当前供应商") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
                     onClick = onTest,
                     enabled = !testing,
-                    modifier = Modifier.automationTag("test_profile_${profile.id}"),
+                    modifier = Modifier
+                        .weight(1f)
+                        .automationTag("test_profile_${profile.id}"),
                 ) { Text(if (testing) "测试中…" else "测试连接") }
-                TextButton(onClick = onEdit) { Text("编辑") }
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("编辑") }
                 TextButton(onClick = onDelete) { Text("删除") }
             }
         }
@@ -264,6 +295,7 @@ internal fun ProviderProfileEditorScreen(
         )
     }
     var submitted by rememberSaveable { mutableStateOf(false) }
+    var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var protocolMenuExpanded by remember { mutableStateOf(false) }
     var reasoningMenuExpanded by remember { mutableStateOf(false) }
     val headers = remember {
@@ -286,21 +318,89 @@ internal fun ProviderProfileEditorScreen(
         extraBody = extraBody,
         inputLimitInput = inputLimitInput,
     )
+    val initialFingerprint = remember(existing) { ProviderEditorFingerprint.from(existing) }
+    val currentFingerprint = ProviderEditorFingerprint(
+        name = name,
+        protocolName = protocolName,
+        baseUrl = baseUrl,
+        endpointPath = endpointPath,
+        effectiveApiKey = apiKeyInput.ifBlank { existing?.apiKey.orEmpty() },
+        model = model,
+        allowCleartext = allowCleartext,
+        additionalRequirements = additionalRequirements,
+        reasoningName = reasoningName,
+        temperatureInput = temperatureInput,
+        maxOutputInput = maxOutputInput,
+        streaming = streaming,
+        extraBody = extraBody,
+        inputLimitInput = inputLimitInput,
+        headers = headers.map {
+            HeaderFingerprint(it.name, it.newValue.ifBlank { it.storedValue })
+        },
+    )
+    val hasUnsavedChanges = currentFingerprint != initialFingerprint
+    val requestCancel = {
+        if (hasUnsavedChanges) confirmDiscard = true else onCancel()
+    }
+    val saveProfile = {
+        submitted = true
+        if (validation.isValid) {
+            onSave(
+                ProviderProfile(
+                    id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                    name = name.trim(),
+                    protocolType = protocol,
+                    baseUrl = baseUrl.trim().trimEnd('/'),
+                    endpointPathOverride = endpointPath.trim(),
+                    apiKey = apiKeyInput.trim().ifBlank { existing?.apiKey.orEmpty() },
+                    model = model.trim(),
+                    customHeaders = headers.map {
+                        CustomHeader(it.name.trim(), it.newValue.ifBlank { it.storedValue })
+                    },
+                    allowCleartext = allowCleartext,
+                    additionalRequirements = additionalRequirements.trim(),
+                    reasoningEffort = reasoningEffort,
+                    temperature = temperatureInput.trim().takeIf { it.isNotEmpty() }?.toDouble(),
+                    maxOutputTokens = maxOutputInput.trim().takeIf { it.isNotEmpty() }?.toInt(),
+                    streaming = streaming,
+                    extraBody = extraBody.trim(),
+                    inputLimit = inputLimitInput.trim().toInt(),
+                ),
+            )
+        }
+    }
 
-    BackHandler(onBack = onCancel)
+    BackHandler(onBack = requestCancel)
     Scaffold(
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(if (existing == null) "新增供应商配置" else "编辑供应商配置") },
-                navigationIcon = { TextButton(onClick = onCancel) { Text("取消") } },
+                navigationIcon = { TextButton(onClick = requestCancel) { Text("取消") } },
             )
+        },
+        bottomBar = {
+            Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                ) {
+                    Button(
+                        onClick = saveProfile,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .automationTag("save_profile"),
+                    ) { Text(if (existing == null) "保存配置" else "保存修改") }
+                }
+            }
         },
     ) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
-                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -525,37 +625,69 @@ internal fun ProviderProfileEditorScreen(
             validation.headers?.takeIf { submitted }?.let {
                 Text(it, color = MaterialTheme.colorScheme.error)
             }
-            Button(
-                onClick = {
-                    submitted = true
-                    if (validation.isValid) {
-                        onSave(
-                            ProviderProfile(
-                                id = existing?.id ?: java.util.UUID.randomUUID().toString(),
-                                name = name.trim(),
-                                protocolType = protocol,
-                                baseUrl = baseUrl.trim().trimEnd('/'),
-                                endpointPathOverride = endpointPath.trim(),
-                                apiKey = apiKeyInput.trim().ifBlank { existing?.apiKey.orEmpty() },
-                                model = model.trim(),
-                                customHeaders = headers.map {
-                                    CustomHeader(it.name.trim(), it.newValue.ifBlank { it.storedValue })
-                                },
-                                allowCleartext = allowCleartext,
-                                additionalRequirements = additionalRequirements.trim(),
-                                reasoningEffort = reasoningEffort,
-                                temperature = temperatureInput.trim().takeIf { it.isNotEmpty() }?.toDouble(),
-                                maxOutputTokens = maxOutputInput.trim().takeIf { it.isNotEmpty() }?.toInt(),
-                                streaming = streaming,
-                                extraBody = extraBody.trim(),
-                                inputLimit = inputLimitInput.trim().toInt(),
-                            ),
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().automationTag("save_profile"),
-            ) { Text(if (existing == null) "保存配置" else "保存修改") }
         }
+    }
+
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text("放弃未保存的修改？") },
+            text = { Text("当前填写的内容尚未保存。放弃后无法恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDiscard = false
+                        onCancel()
+                    },
+                ) { Text("放弃修改", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscard = false }) { Text("继续编辑") }
+            },
+        )
+    }
+}
+
+private data class HeaderFingerprint(
+    val name: String,
+    val effectiveValue: String,
+)
+
+private data class ProviderEditorFingerprint(
+    val name: String,
+    val protocolName: String,
+    val baseUrl: String,
+    val endpointPath: String,
+    val effectiveApiKey: String,
+    val model: String,
+    val allowCleartext: Boolean,
+    val additionalRequirements: String,
+    val reasoningName: String,
+    val temperatureInput: String,
+    val maxOutputInput: String,
+    val streaming: Boolean,
+    val extraBody: String,
+    val inputLimitInput: String,
+    val headers: List<HeaderFingerprint>,
+) {
+    companion object {
+        fun from(existing: ProviderProfile?): ProviderEditorFingerprint = ProviderEditorFingerprint(
+            name = existing?.name.orEmpty(),
+            protocolName = (existing?.protocolType ?: ProtocolType.OPENAI_CHAT_COMPLETIONS).name,
+            baseUrl = existing?.baseUrl ?: "https://",
+            endpointPath = existing?.endpointPathOverride.orEmpty(),
+            effectiveApiKey = existing?.apiKey.orEmpty(),
+            model = existing?.model.orEmpty(),
+            allowCleartext = existing?.allowCleartext == true,
+            additionalRequirements = existing?.additionalRequirements.orEmpty(),
+            reasoningName = (existing?.reasoningEffort ?: ReasoningEffort.AUTO).name,
+            temperatureInput = existing?.temperature?.toString().orEmpty(),
+            maxOutputInput = existing?.maxOutputTokens?.toString().orEmpty(),
+            streaming = existing?.streaming != false,
+            extraBody = existing?.extraBody.orEmpty(),
+            inputLimitInput = (existing?.inputLimit ?: ProviderProfile.DEFAULT_INPUT_LIMIT).toString(),
+            headers = existing?.customHeaders?.map { HeaderFingerprint(it.name, it.value) }.orEmpty(),
+        )
     }
 }
 
