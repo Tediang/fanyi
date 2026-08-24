@@ -37,7 +37,7 @@ internal object ChatCompletionsProtocol {
             .optJSONArray("choices")
             ?.optJSONObject(0)
             ?.optJSONObject("delta")
-            ?.optString("content")
+            ?.stringValue("content")
             .orEmpty()
     }
 
@@ -45,10 +45,12 @@ internal object ChatCompletionsProtocol {
         .optJSONArray("choices")
         ?.optJSONObject(0)
         ?.optJSONObject("message")
-        ?.optString("content")
+        ?.stringValue("content")
         .orEmpty()
 
     fun errorMessage(body: String): String = runCatching {
-        JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
+        JSONObject(body).optJSONObject("error")?.stringValue("message").orEmpty()
     }.getOrDefault("")
+
+    private fun JSONObject.stringValue(name: String): String = opt(name) as? String ?: ""
 }

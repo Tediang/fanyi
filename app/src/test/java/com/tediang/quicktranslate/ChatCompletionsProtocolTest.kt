@@ -54,4 +54,26 @@ class ChatCompletionsProtocolTest {
             ),
         )
     }
+
+    @Test
+    fun ignoresNullAndMissingContentInDeepSeekStreamEvents() {
+        assertEquals(
+            "",
+            ChatCompletionsProtocol.streamDelta(
+                """{"choices":[{"delta":{"role":"assistant","content":null}}]}""",
+            ),
+        )
+        assertEquals(
+            "",
+            ChatCompletionsProtocol.streamDelta(
+                """{"choices":[{"delta":{"reasoning_content":"思考中","content":null}}]}""",
+            ),
+        )
+        assertEquals(
+            "你好",
+            ChatCompletionsProtocol.streamDelta(
+                """{"choices":[{"delta":{"content":"你好"}}]}""",
+            ),
+        )
+    }
 }

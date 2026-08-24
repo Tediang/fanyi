@@ -18,8 +18,14 @@ class MainActivityIntentTest {
     @Test
     fun ordinaryLaunchShowsManualTranslationSurface() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        EncryptedServiceConfigStore(context).save(
-            ServiceConfig("测试服务", "https://api.example.com", "", "test-model"),
+        context.getSharedPreferences("quick_translate_provider_profiles", 0).edit().clear().commit()
+        ProviderProfileRepository(context).save(
+            ProviderProfile(
+                name = "测试服务",
+                protocolType = ProtocolType.OPENAI_CHAT_COMPLETIONS,
+                baseUrl = "https://api.example.com",
+                model = "test-model",
+            ),
         )
         val intent = Intent(
             context,

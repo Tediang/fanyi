@@ -32,12 +32,15 @@ class ManualTranslationFlowTest {
         server.start()
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        EncryptedServiceConfigStore(context).save(
-            ServiceConfig(
+        context.getSharedPreferences("quick_translate_provider_profiles", 0).edit().clear().commit()
+        ProviderProfileRepository(context).save(
+            ProviderProfile(
                 name = "本机假服务",
+                protocolType = ProtocolType.OPENAI_CHAT_COMPLETIONS,
                 baseUrl = server.url("/").toString(),
                 apiKey = "fake-key",
                 model = "fake-model",
+                allowCleartext = true,
             ),
         )
     }
@@ -56,7 +59,9 @@ class ManualTranslationFlowTest {
             MockResponse.Builder()
                 .addHeader("Content-Type", "text/event-stream")
                 .body(
-                    "data: {\"choices\":[{\"delta\":{\"content\":\"你\"}}]}\n\n" +
+                    "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":null}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"思考中\",\"content\":null}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"你\"}}]}\n\n" +
                         "data: {\"choices\":[{\"delta\":{\"content\":\"好\"}}]}\n\n" +
                         "data: [DONE]\n\n",
                 )

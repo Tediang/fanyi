@@ -3,7 +3,6 @@ package com.tediang.quicktranslate
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -38,152 +36,83 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
+private enum class AppSurface { TRANSLATE, PROFILES, EDIT_PROFILE }
+
 @Composable
 internal fun ManualTranslationApp(
-    configStore: EncryptedServiceConfigStore,
+    profileRepository: ProviderProfileRepository,
     client: ChatCompletionsClient,
+    connectionTester: ProviderConnectionTester,
     onClose: () -> Unit,
 ) {
-    var config by remember { mutableStateOf(configStore.load()) }
-    var editingConfig by rememberSaveable { mutableStateOf(config == null) }
-
-    if (editingConfig || config == null) {
-        ServiceConfigScreen(
-            initialConfig = config,
-            canCancel = config != null,
-            onCancel = { editingConfig = false },
-            onSave = {
-                configStore.save(it)
-                config = it
-                editingConfig = false
-            },
-        )
-    } else {
-        TranslationScreen(
-            config = requireNotNull(config),
-            client = client,
-            onEditConfig = { editingConfig = true },
-            onClose = onClose,
-        )
+    var catalog by remember { mutableStateOf(profileRepository.load()) }
+    var surface by rememberSaveable {
+        mutableStateOf(if (catalog.currentProfile == null) AppSurface.PROFILES else AppSurface.TRANSLATE)
     }
-}
+    var editingProfileId by rememberSaveable { mutableStateOf<String?>(null) }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ServiceConfigScreen(
-    initialConfig: ServiceConfig?,
-    canCancel: Boolean,
-    onCancel: () -> Unit,
-    onSave: (ServiceConfig) -> Unit,
-) {
-    var name by rememberSaveable { mutableStateOf(initialConfig?.name.orEmpty()) }
-    var baseUrl by rememberSaveable { mutableStateOf(initialConfig?.baseUrl.orEmpty()) }
-    var apiKey by remember { mutableStateOf(initialConfig?.apiKey.orEmpty()) }
-    var model by rememberSaveable { mutableStateOf(initialConfig?.model.orEmpty()) }
-    var submitted by rememberSaveable { mutableStateOf(false) }
-    val errors = validateConfig(name, baseUrl, model)
-
-    BackHandler(enabled = canCancel, onBack = onCancel)
-    Scaffold(
-        modifier = Modifier.semantics { testTagsAsResourceId = true },
-        topBar = {
-            TopAppBar(
-                title = { Text(if (initialConfig == null) "配置翻译服务" else "编辑翻译服务") },
-                navigationIcon = {
-                    if (canCancel) TextButton(onClick = onCancel) { Text("返回") }
-                },
-            )
-        },
-    ) { contentPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text(
-                "先配置一个 OpenAI Chat Completions 兼容服务。API Key 会在本机加密保存。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("配置名称") },
-                supportingText = errorText(submitted, errors.name, "例如：DeepSeek") ,
-                isError = submitted && errors.name != null,
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().automationTag("config_name"),
-            )
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                label = { Text("Base URL") },
-                supportingText = errorText(submitted, errors.baseUrl, "例如：https://api.deepseek.com"),
-                isError = submitted && errors.baseUrl != null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().automationTag("base_url"),
-            )
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                label = { Text("API Key（可选）") },
-                supportingText = { Text("不会显示在普通配置数据或日志中") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().automationTag("api_key"),
-            )
-            OutlinedTextField(
-                value = model,
-                onValueChange = { model = it },
-                label = { Text("模型") },
-                supportingText = errorText(submitted, errors.model, "例如：deepseek-chat"),
-                isError = submitted && errors.model != null,
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().automationTag("model"),
-            )
-            Button(
-                onClick = {
-                    submitted = true
-                    if (errors.isEmpty) {
-                        onSave(
-                            ServiceConfig(
-                                name = name.trim(),
-                                baseUrl = baseUrl.trim().trimEnd('/'),
-                                apiKey = apiKey.trim(),
-                                model = model.trim(),
-                            ),
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().automationTag("save_config"),
-            ) {
-                Text("保存并继续")
+    when (surface) {
+        AppSurface.TRANSLATE -> {
+            val current = catalog.currentProfile
+            if (current == null) {
+                surface = AppSurface.PROFILES
+            } else {
+                ProviderTranslationScreen(
+                    profile = current,
+                    client = client,
+                    onOpenProfiles = { surface = AppSurface.PROFILES },
+                    onClose = onClose,
+                )
             }
+        }
+
+        AppSurface.PROFILES -> ProviderProfilesScreen(
+            catalog = catalog,
+            connectionTester = connectionTester,
+            onBack = {
+                if (catalog.currentProfile != null) surface = AppSurface.TRANSLATE else onClose()
+            },
+            onAdd = {
+                editingProfileId = null
+                surface = AppSurface.EDIT_PROFILE
+            },
+            onEdit = {
+                editingProfileId = it
+                surface = AppSurface.EDIT_PROFILE
+            },
+            onSelect = { catalog = profileRepository.select(it) },
+            onDelete = { catalog = profileRepository.delete(it) },
+        )
+
+        AppSurface.EDIT_PROFILE -> {
+            val existing = catalog.profiles.firstOrNull { it.id == editingProfileId }
+            ProviderProfileEditorScreen(
+                existing = existing,
+                existingNames = catalog.profiles.filterNot { it.id == existing?.id }.map { it.name },
+                onCancel = { surface = AppSurface.PROFILES },
+                onSave = { profile ->
+                    val selectSaved = catalog.currentProfile == null
+                    catalog = profileRepository.save(profile, makeCurrent = selectSaved)
+                    surface = if (selectSaved) AppSurface.TRANSLATE else AppSurface.PROFILES
+                },
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TranslationScreen(
-    config: ServiceConfig,
+private fun ProviderTranslationScreen(
+    profile: ProviderProfile,
     client: ChatCompletionsClient,
-    onEditConfig: () -> Unit,
+    onOpenProfiles: () -> Unit,
     onClose: () -> Unit,
 ) {
     var sourceText by rememberSaveable { mutableStateOf("") }
@@ -202,7 +131,7 @@ private fun TranslationScreen(
             TopAppBar(
                 title = { Text("快译") },
                 navigationIcon = { TextButton(onClick = onClose) { Text("关闭") } },
-                actions = { TextButton(onClick = onEditConfig, enabled = !loading) { Text("设置") } },
+                actions = { TextButton(onClick = onOpenProfiles, enabled = !loading) { Text("供应商") } },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -217,9 +146,14 @@ private fun TranslationScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "${config.name} · ${config.model}",
+                "${profile.name} · ${profile.model}",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                profile.protocolType.displayName,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(
                 value = sourceText,
@@ -240,20 +174,21 @@ private fun TranslationScreen(
                         sourceError = true
                         return@Button
                     }
+                    if (profile.protocolType != ProtocolType.OPENAI_CHAT_COMPLETIONS) {
+                        status = "翻译失败：${profile.protocolType.displayName} 翻译适配器将在后续工单接入"
+                        return@Button
+                    }
                     loading = true
                     result = ""
                     status = "正在连接…"
                     scope.launch {
                         runCatching {
-                            client.translate(config, sourceText.trim()) { delta ->
+                            client.translate(profile, sourceText.trim()) { delta ->
                                 result += delta
                                 status = "正在翻译…"
                             }
-                        }.onSuccess {
-                            status = "翻译完成"
-                        }.onFailure {
-                            status = "翻译失败：${it.message ?: "未知错误"}"
-                        }
+                        }.onSuccess { status = "翻译完成" }
+                            .onFailure { status = "翻译失败：${it.message ?: "未知错误"}" }
                         loading = false
                     }
                 },
@@ -268,9 +203,7 @@ private fun TranslationScreen(
                 }
                 Text(if (loading) "翻译中" else "翻译")
             }
-
             TranslationResultCard(status = status, result = result)
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -282,9 +215,7 @@ private fun TranslationScreen(
                     },
                     enabled = result.isNotBlank() && !loading,
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text("复制译文")
-                }
+                ) { Text("复制译文") }
                 OutlinedButton(
                     onClick = {
                         sourceText = ""
@@ -293,9 +224,7 @@ private fun TranslationScreen(
                     },
                     enabled = !loading && (sourceText.isNotEmpty() || result.isNotEmpty()),
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text("清空")
-                }
+                ) { Text("清空") }
             }
         }
     }
@@ -327,33 +256,10 @@ private fun TranslationResultCard(status: String, result: String) {
     }
 }
 
-@Composable
-private fun errorText(showError: Boolean, error: String?, hint: String): @Composable (() -> Unit) = {
-    Text(if (showError && error != null) error else hint)
-}
-
-private data class ConfigErrors(
-    val name: String?,
-    val baseUrl: String?,
-    val model: String?,
-) {
-    val isEmpty: Boolean get() = name == null && baseUrl == null && model == null
-}
-
-private fun validateConfig(name: String, baseUrl: String, model: String): ConfigErrors {
-    val uri = runCatching { Uri.parse(baseUrl.trim()) }.getOrNull()
-    val validUrl = uri?.scheme?.lowercase() in setOf("http", "https") && !uri?.host.isNullOrBlank()
-    return ConfigErrors(
-        name = if (name.isBlank()) "请输入配置名称" else null,
-        baseUrl = if (validUrl) null else "请输入完整的 http 或 https 地址",
-        model = if (model.isBlank()) "请输入模型名称" else null,
-    )
-}
-
 private fun copyTranslation(context: Context, text: String) {
-    val clipboard = context.getSystemService(ClipboardManager::class.java)
-    clipboard.setPrimaryClip(ClipData.newPlainText("快译译文", text))
+    context.getSystemService(ClipboardManager::class.java)
+        .setPrimaryClip(ClipData.newPlainText("快译译文", text))
 }
 
-private fun Modifier.automationTag(tag: String): Modifier =
+internal fun Modifier.automationTag(tag: String): Modifier =
     testTag(tag).semantics { testTagsAsResourceId = true }

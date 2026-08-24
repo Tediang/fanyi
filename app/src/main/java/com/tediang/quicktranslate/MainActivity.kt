@@ -30,8 +30,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
-    private val configStore by lazy { EncryptedServiceConfigStore(applicationContext) }
+    private val profileRepository by lazy { ProviderProfileRepository(applicationContext) }
     private val translationClient by lazy { ChatCompletionsClient() }
+    private val connectionTester by lazy { ProviderConnectionTester() }
     private var diagnosticEntry by mutableStateOf(DiagnosticEntry.empty())
     private var ordinaryLaunch by mutableStateOf(true)
 
@@ -44,8 +45,9 @@ class MainActivity : ComponentActivity() {
             QuickTranslateTheme {
                 if (ordinaryLaunch) {
                     ManualTranslationApp(
-                        configStore = configStore,
+                        profileRepository = profileRepository,
                         client = translationClient,
+                        connectionTester = connectionTester,
                         onClose = ::finish,
                     )
                 } else {

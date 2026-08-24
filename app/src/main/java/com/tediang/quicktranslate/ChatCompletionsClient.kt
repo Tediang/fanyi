@@ -17,15 +17,37 @@ internal class ChatCompletionsClient(
         config: ServiceConfig,
         sourceText: String,
         onDelta: suspend (String) -> Unit,
+    ): String = translate(
+        profile = ProviderProfile(
+            name = config.name,
+            protocolType = ProtocolType.OPENAI_CHAT_COMPLETIONS,
+            baseUrl = config.baseUrl,
+            apiKey = config.apiKey,
+            model = config.model,
+            allowCleartext = config.baseUrl.trim().startsWith("http://"),
+        ),
+        sourceText = sourceText,
+        onDelta = onDelta,
+    )
+
+    suspend fun translate(
+        profile: ProviderProfile,
+        sourceText: String,
+        onDelta: suspend (String) -> Unit,
     ): String = withContext(Dispatchers.IO) {
-        val body = ChatCompletionsProtocol.requestBody(config.model, sourceText)
+        require(profile.protocolType == ProtocolType.OPENAI_CHAT_COMPLETIONS) {
+            "当前协议尚未接入翻译"
+        }
+        ProfileNetworkPolicy.requireAllowed(profile)
+        val body = ChatCompletionsProtocol.requestBody(profile.model, sourceText)
             .toRequestBody(JSON_MEDIA_TYPE)
         val request = Request.Builder()
-            .url(ChatCompletionsProtocol.endpoint(config.baseUrl))
+            .url(profile.endpoint())
             .post(body)
             .header("Accept", "text/event-stream, application/json")
             .apply {
-                if (config.apiKey.isNotBlank()) header("Authorization", "Bearer ${config.apiKey}")
+                if (profile.apiKey.isNotBlank()) header("Authorization", "Bearer ${profile.apiKey}")
+                profile.customHeaders.forEach { header(it.name, it.value) }
             }
             .build()
 
