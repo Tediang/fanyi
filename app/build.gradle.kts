@@ -11,8 +11,8 @@ android {
         applicationId = "com.tediang.quicktranslate"
         minSdk = 35
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.4.0-rc6"
+        versionCode = 10
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
