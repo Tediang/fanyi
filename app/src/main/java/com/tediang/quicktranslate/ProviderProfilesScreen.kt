@@ -274,7 +274,6 @@ internal fun ProviderProfileEditorScreen(
     var apiKeyInput by remember { mutableStateOf("") }
     var model by rememberSaveable { mutableStateOf(existing?.model.orEmpty()) }
     var allowCleartext by rememberSaveable { mutableStateOf(existing?.allowCleartext == true) }
-    var additionalRequirements by rememberSaveable { mutableStateOf(existing?.additionalRequirements.orEmpty()) }
     var reasoningName by rememberSaveable {
         mutableStateOf((existing?.reasoningEffort ?: ReasoningEffort.AUTO).name)
     }
@@ -327,7 +326,6 @@ internal fun ProviderProfileEditorScreen(
         effectiveApiKey = apiKeyInput.ifBlank { existing?.apiKey.orEmpty() },
         model = model,
         allowCleartext = allowCleartext,
-        additionalRequirements = additionalRequirements,
         reasoningName = reasoningName,
         temperatureInput = temperatureInput,
         maxOutputInput = maxOutputInput,
@@ -358,7 +356,6 @@ internal fun ProviderProfileEditorScreen(
                         CustomHeader(it.name.trim(), it.newValue.ifBlank { it.storedValue })
                     },
                     allowCleartext = allowCleartext,
-                    additionalRequirements = additionalRequirements.trim(),
                     reasoningEffort = reasoningEffort,
                     temperature = temperatureInput.trim().takeIf { it.isNotEmpty() }?.toDouble(),
                     maxOutputTokens = maxOutputInput.trim().takeIf { it.isNotEmpty() }?.toInt(),
@@ -473,16 +470,6 @@ internal fun ProviderProfileEditorScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().automationTag("profile_model"),
             )
-            OutlinedTextField(
-                value = additionalRequirements,
-                onValueChange = { additionalRequirements = it },
-                label = { Text("附加要求（可选）") },
-                supportingText = { Text("只能补充翻译偏好，不能覆盖只输出译文等核心规则") },
-                minLines = 2,
-                maxLines = 4,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
             OutlinedButton(
                 onClick = { advancedExpanded = !advancedExpanded },
                 modifier = Modifier.fillMaxWidth(),
@@ -661,7 +648,6 @@ private data class ProviderEditorFingerprint(
     val effectiveApiKey: String,
     val model: String,
     val allowCleartext: Boolean,
-    val additionalRequirements: String,
     val reasoningName: String,
     val temperatureInput: String,
     val maxOutputInput: String,
@@ -679,7 +665,6 @@ private data class ProviderEditorFingerprint(
             effectiveApiKey = existing?.apiKey.orEmpty(),
             model = existing?.model.orEmpty(),
             allowCleartext = existing?.allowCleartext == true,
-            additionalRequirements = existing?.additionalRequirements.orEmpty(),
             reasoningName = (existing?.reasoningEffort ?: ReasoningEffort.AUTO).name,
             temperatureInput = existing?.temperature?.toString().orEmpty(),
             maxOutputInput = existing?.maxOutputTokens?.toString().orEmpty(),

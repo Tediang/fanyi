@@ -34,7 +34,6 @@ internal data class ProviderProfile(
     val model: String,
     val customHeaders: List<CustomHeader> = emptyList(),
     val allowCleartext: Boolean = false,
-    val additionalRequirements: String = "",
     val reasoningEffort: ReasoningEffort = ReasoningEffort.AUTO,
     val temperature: Double? = null,
     val maxOutputTokens: Int? = null,

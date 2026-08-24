@@ -14,6 +14,7 @@ class MainActivity : ComponentActivity() {
     private val translationEngine by lazy { TranslationEngine() }
     private val connectionTester by lazy { ProviderConnectionTester() }
     private val clipboardResolver by lazy { ClipboardShortcutResolver(applicationContext) }
+    private val preferenceStore by lazy { TranslationPreferenceStore(applicationContext) }
     private var launch by mutableStateOf(TranslationLaunch.manual())
     private var clipboardResolutionId: String? = null
 
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity() {
                     profileRepository = profileRepository,
                     gateway = translationEngine,
                     connectionTester = connectionTester,
+                    preferenceStore = preferenceStore,
                     launch = launch,
                     onClose = ::finish,
                 )

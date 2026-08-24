@@ -33,6 +33,7 @@ internal class ChatCompletionsClient(
         profile = profile,
         sourceText = sourceText,
         targetLanguage = defaultTargetLanguage(sourceText),
+        preference = TranslationPreference.GENERAL,
         onDelta = onDelta,
     ).text
 }

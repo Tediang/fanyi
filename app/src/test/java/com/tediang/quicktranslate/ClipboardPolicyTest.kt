@@ -41,6 +41,12 @@ class ClipboardPolicyTest {
     fun defaultDirectionUsesChinesePresenceOnlyForTargetChoice() {
         assertEquals(TargetLanguage.ENGLISH, defaultTargetLanguage("电池 stores energy"))
         assertEquals(TargetLanguage.SIMPLIFIED_CHINESE, defaultTargetLanguage("Battery stores energy"))
+        assertEquals(TargetLanguage.SIMPLIFIED_CHINESE, defaultTargetLanguage("こんにちは世界"))
+        assertEquals(TargetLanguage.SIMPLIFIED_CHINESE, defaultTargetLanguage("안녕하세요"))
+        assertEquals(
+            listOf("简体中文", "英文", "日文", "韩文"),
+            TargetLanguage.entries.map { it.displayName },
+        )
         assertTrue(defaultTargetLanguage("") == TargetLanguage.SIMPLIFIED_CHINESE)
     }
 

@@ -1,8 +1,8 @@
 # 安装与配置快译候选版
 
-候选版本：`0.4.0-rc1`（versionCode 4）
+候选版本：`0.4.0-rc3`（versionCode 6）
 
-当前 debug APK 的 SHA-256：`4D716EBAF0F3AE471171FFF75B27522AC6063B963FD60EFEDC0B40F8B3BDDC56`
+当前 debug APK 的 SHA-256：`B41D190A72CD32DC7CDD27EE871F8D32D2DD4C7D1E41C73B149AA9A73ED8F18B`
 
 ## 安装 APK
 
@@ -34,7 +34,7 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 保存后先点“测试连接”。首次从选词、分享或快捷键带入原文时，只有连接测试成功，快译才会继续发送之前保留的原文。
 
-“高级设置”可配置附加要求、推理等级、Temperature、最大输出量、流式开关、输入长度限制以及受控 `extra_body`。默认值适合大多数兼容服务；不支持的推理等级会在请求前提示，不会假装已经生效。
+“高级设置”可配置推理等级、Temperature、最大输出量、流式开关、输入长度限制以及受控 `extra_body`。翻译风格已移到主翻译界面的“偏好”选择，不随供应商绑定。
 
 ## 常见配置示例
 

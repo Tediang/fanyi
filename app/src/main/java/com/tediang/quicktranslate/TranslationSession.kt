@@ -90,6 +90,7 @@ internal sealed interface TranslationProgress {
 internal data class TranslationSessionState(
     val sourceText: String,
     val targetLanguage: TargetLanguage,
+    val preference: TranslationPreference = TranslationPreference.GENERAL,
     val translatedText: String = "",
     val progress: TranslationProgress = TranslationProgress.Idle,
 )
@@ -99,11 +100,13 @@ internal class TranslationSessionController(
     private val scope: CoroutineScope,
     initialSourceText: String,
     private val launchId: String? = null,
+    initialPreference: TranslationPreference = TranslationPreference.GENERAL,
 ) {
     private val mutableState = MutableStateFlow(
         TranslationSessionState(
             sourceText = initialSourceText,
             targetLanguage = defaultTargetLanguage(initialSourceText),
+            preference = initialPreference,
         ),
     )
     val state: StateFlow<TranslationSessionState> = mutableState.asStateFlow()
@@ -116,13 +119,28 @@ internal class TranslationSessionController(
         mutableState.value = current.copy(
             sourceText = text,
             targetLanguage = if (targetManuallySelected) current.targetLanguage else defaultTargetLanguage(text),
+            translatedText = if (current.progress is TranslationProgress.Running) current.translatedText else "",
             progress = if (current.progress is TranslationProgress.Running) current.progress else TranslationProgress.Idle,
         )
     }
 
     fun selectTarget(targetLanguage: TargetLanguage) {
         targetManuallySelected = true
-        mutableState.value = mutableState.value.copy(targetLanguage = targetLanguage)
+        val current = mutableState.value
+        mutableState.value = current.copy(
+            targetLanguage = targetLanguage,
+            translatedText = if (current.progress is TranslationProgress.Running) current.translatedText else "",
+            progress = if (current.progress is TranslationProgress.Running) current.progress else TranslationProgress.Idle,
+        )
+    }
+
+    fun selectPreference(preference: TranslationPreference) {
+        val current = mutableState.value
+        mutableState.value = current.copy(
+            preference = preference,
+            translatedText = if (current.progress is TranslationProgress.Running) current.translatedText else "",
+            progress = if (current.progress is TranslationProgress.Running) current.progress else TranslationProgress.Idle,
+        )
     }
 
     fun start(profile: ProviderProfile) {
@@ -146,12 +164,14 @@ internal class TranslationSessionController(
             progress = TranslationProgress.Running,
         )
         val target = mutableState.value.targetLanguage
+        val preference = mutableState.value.preference
         activeJob = scope.launch {
             try {
                 val result = gateway.translate(
                     profile = profile,
                     sourceText = source,
                     targetLanguage = target,
+                    preference = preference,
                     onRequestDispatched = { launchId?.let(LaunchPerformance::markRequestDispatched) },
                 ) { delta ->
                     if (requestId == id) {
@@ -209,13 +229,28 @@ internal class TranslationSessionController(
         mutableState.value = mutableState.value.copy(progress = TranslationProgress.Cancelled)
     }
 
-    fun clear() {
-        cancel()
-        targetManuallySelected = false
-        mutableState.value = TranslationSessionState("", TargetLanguage.SIMPLIFIED_CHINESE)
+    fun clearSource() {
+        stopActiveRequest()
+        mutableState.value = mutableState.value.copy(
+            sourceText = "",
+            translatedText = "",
+            progress = TranslationProgress.Idle,
+        )
+    }
+
+    fun clearTranslation() {
+        stopActiveRequest()
+        mutableState.value = mutableState.value.copy(
+            translatedText = "",
+            progress = TranslationProgress.Idle,
+        )
     }
 
     fun dispose() {
+        stopActiveRequest()
+    }
+
+    private fun stopActiveRequest() {
         requestId += 1
         activeJob?.cancel()
         activeJob = null

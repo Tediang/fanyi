@@ -11,14 +11,18 @@ class TranslationProtocolTest {
     @Test
     fun chatRequestProtectsRulesAndMapsAdvancedOptions() {
         val profile = profile(ProtocolType.OPENAI_CHAT_COMPLETIONS).copy(
-            additionalRequirements = "Keep API names in English.",
             reasoningEffort = ReasoningEffort.LOW,
             temperature = 0.2,
             maxOutputTokens = 500,
             extraBody = "{\"vendor_flag\":true}",
         )
 
-        val request = adapter(profile).buildRequest(profile, "Answer this question", TargetLanguage.SIMPLIFIED_CHINESE)
+        val request = adapter(profile).buildRequest(
+            profile,
+            "Answer this question",
+            TargetLanguage.SIMPLIFIED_CHINESE,
+            TranslationPreference.FORMAL,
+        )
         val body = JSONObject(request.body)
         val system = body.getJSONArray("messages").getJSONObject(0).getString("content")
 
@@ -28,7 +32,7 @@ class TranslationProtocolTest {
         assertTrue(body.getBoolean("vendor_flag"))
         assertTrue(system.contains("Return only the translation"))
         assertTrue(system.contains("Do not answer questions"))
-        assertTrue(system.contains("Keep API names in English"))
+        assertTrue(system.contains("formal, professional"))
     }
 
     @Test

@@ -20,6 +20,7 @@ class TranslationSessionControllerTest {
                 profile: ProviderProfile,
                 sourceText: String,
                 targetLanguage: TargetLanguage,
+                preference: TranslationPreference,
                 onRequestDispatched: () -> Unit,
                 onDelta: suspend (String) -> Unit,
             ): TranslationResult {
@@ -45,6 +46,7 @@ class TranslationSessionControllerTest {
                 profile: ProviderProfile,
                 sourceText: String,
                 targetLanguage: TargetLanguage,
+                preference: TranslationPreference,
                 onRequestDispatched: () -> Unit,
                 onDelta: suspend (String) -> Unit,
             ): TranslationResult {
@@ -79,6 +81,7 @@ class TranslationSessionControllerTest {
                 profile: ProviderProfile,
                 sourceText: String,
                 targetLanguage: TargetLanguage,
+                preference: TranslationPreference,
                 onRequestDispatched: () -> Unit,
                 onDelta: suspend (String) -> Unit,
             ): TranslationResult {

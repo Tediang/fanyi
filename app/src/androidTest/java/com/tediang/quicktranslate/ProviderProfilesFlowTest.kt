@@ -69,6 +69,7 @@ class ProviderProfilesFlowTest {
             clickText("新增")
 
             assertResourceVisible("save_profile")
+            assertFalse(device.hasObject(By.text("附加要求（可选）")))
             findResource("profile_name").text = "尚未保存的服务"
             clickText("取消")
 

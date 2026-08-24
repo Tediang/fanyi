@@ -24,7 +24,6 @@ class ProviderProfileRepositoryTest {
             apiKey = "cloud-secret-key",
             model = "cloud-model",
             customHeaders = listOf(CustomHeader("X-Route", "private-route")),
-            additionalRequirements = "Keep product names in English.",
             reasoningEffort = ReasoningEffort.LOW,
             temperature = 0.2,
             maxOutputTokens = 600,

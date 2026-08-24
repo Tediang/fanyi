@@ -126,8 +126,12 @@ class LaunchPerformanceBenchmarkTest {
 
     private fun percentile95(samples: List<Long>): Long {
         val sorted = samples.sorted()
-        val index = kotlin.math.ceil(sorted.size * 0.95).toInt().coerceAtLeast(1) - 1
-        return sorted[index]
+        val position = (sorted.lastIndex * 0.95)
+        val lowerIndex = kotlin.math.floor(position).toInt()
+        val upperIndex = kotlin.math.ceil(position).toInt()
+        if (lowerIndex == upperIndex) return sorted[lowerIndex]
+        val fraction = position - lowerIndex
+        return (sorted[lowerIndex] + (sorted[upperIndex] - sorted[lowerIndex]) * fraction).toLong()
     }
 
     private companion object {

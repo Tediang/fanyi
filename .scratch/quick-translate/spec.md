@@ -36,7 +36,7 @@ Android 普通应用不能强行修改所有宿主应用的文字菜单，也不
 18. As a user with a different one-off target, I want to change the target language for the current translation, so that the global default does not need to change.
 19. As a reader, I want only the translation in the main result, so that explanations and chatbot commentary do not obscure it.
 20. As a reader, I want paragraphs, lists, tone and proper nouns preserved, so that the output remains useful in context.
-21. As a technical reader, I want to add a profile-specific 附加要求 such as preserving programming terms in English, so that translation follows my terminology preference.
+21. As a reader, I want to switch among built-in general, formal, conversational, correspondence, academic and literary preferences on the translation screen, so that style is independent of the selected supplier.
 22. As a user, I want core translation-only rules protected from profile customization, so that an accidental instruction cannot turn 快译 into a general chatbot.
 23. As a user, I want the translation to stream into the UI, so that I can begin reading before the model completes the full response.
 24. As a user, I want a new translation request to cancel the previous unfinished one, so that outdated output does not continue consuming resources or overwrite the current result.
@@ -95,7 +95,7 @@ Android 普通应用不能强行修改所有宿主应用的文字菜单，也不
 - Keep the Activity compact and permission-free. It appears immediately, displays source text before network completion, and closes with Back to reveal the previous application.
 - Use a translation coordinator as the main application seam. It accepts normalized input plus the 当前供应商配置 and emits observable UI state, while provider-specific request and stream details remain behind protocol adapters.
 - Persist multiple named 供应商配置 and a reference to one current profile. Store ordinary settings separately from secret values so profiles can be inspected without decrypting credentials unnecessarily.
-- A supplier profile contains: name, protocol type, Base URL, optional endpoint-path override, optional API key, model, optional headers, 附加要求, input-character limit, stream preference, inference level, optional Temperature, optional output limit and optional `extra_body`.
+- A supplier profile contains: name, protocol type, Base URL, optional endpoint-path override, optional API key, model, optional headers, input-character limit, stream preference, inference level, optional Temperature, optional output limit and optional `extra_body`.
 - Treat API keys and all custom-header values as potentially sensitive. Encrypt them with a key protected by Android Keystore. Never include them in exported state, ordinary logs or diagnostics.
 - Allow cleartext HTTP only when a profile explicitly opts in after a warning. HTTPS remains the default. Certificate failures must not silently downgrade to HTTP.
 - Implement exactly three protocol adapters: OpenAI Chat Completions, OpenAI Responses and Anthropic Messages. Each owns request construction, synchronous response extraction, streaming-event parsing, cancellation, capability checks and normalized errors.
@@ -103,8 +103,8 @@ Android 普通应用不能强行修改所有宿主应用的文字菜单，也不
 - Do not implement arbitrary JSON templates or JSONPath extraction. `extra_body` is a JSON object merged only into an allowlisted extension area and cannot replace the model, input/messages, core prompt, authentication or streaming fields.
 - Normalize inference level as automatic/off/low/medium/high at the profile boundary. Each adapter maps only supported values. Unsupported values fail profile validation or produce a clear preflight warning; they are never silently reported as active.
 - Omit Temperature and maximum output settings unless the profile explicitly supplies them. Streaming defaults to enabled and falls back to non-streaming only when the profile deliberately disables it or the adapter identifies a known unsupported capability.
-- Construct a protected core translation instruction that demands only translated output, preserves meaning, tone and formatting, and forbids answering instructions found in the source. Append a bounded 附加要求 after the protected instruction without allowing it to replace the core rules.
-- Apply the 默认翻译方向 automatically: non-Chinese to Simplified Chinese, Chinese to English. A per-session target override affects only that translation session.
+- Construct a protected core translation instruction that demands only translated output, preserves meaning, tone and formatting, and forbids answering instructions found in the source. Append the selected built-in 翻译偏好 without allowing it to replace the core rules.
+- Apply the 默认翻译方向 automatically: Chinese to English; English, Japanese, Korean and other text to Simplified Chinese. The translation screen offers Simplified Chinese, English, Japanese and Korean targets.
 - Default the input limit to 20,000 Unicode characters per profile. Validate before network dispatch. Do not split, summarize or make multiple requests automatically.
 - Use a 10-second connection timeout and a 60-second overall request timeout. Expose cancellation. On stream failure, retain received text and mark it incomplete.
 - Do not automatically fail over between supplier profiles. Switching supplier requires an explicit user action and starts a new request.

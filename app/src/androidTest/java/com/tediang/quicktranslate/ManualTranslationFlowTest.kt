@@ -70,10 +70,10 @@ class ManualTranslationFlowTest {
 
         launchApp().use {
             inputSourceAndTranslate("Hello")
-            assertVisible("5 字")
+            assertResourceTextContains("source_count", "5 字")
             assertVisible("翻译完成", prefix = true)
             assertVisible("你好")
-            assertVisible("2 字")
+            assertResourceTextContains("translation_count", "2 字")
             assertEquals("不要覆盖", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
             device.findObject(By.text("复制译文")).click()
             assertEquals("你好", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
@@ -149,6 +149,11 @@ class ManualTranslationFlowTest {
         val selector = if (prefix) By.textStartsWith(text) else By.text(text)
         val node = device.wait(Until.findObject(selector), TIMEOUT_MS)
         assertTrue("Expected visible text: $text", node != null)
+    }
+
+    private fun assertResourceTextContains(resource: String, expected: String) {
+        val node = device.wait(Until.findObject(By.res(resource)), TIMEOUT_MS)
+        assertTrue("Expected resource $resource to contain: $expected", node?.text?.contains(expected) == true)
     }
 
     private companion object {

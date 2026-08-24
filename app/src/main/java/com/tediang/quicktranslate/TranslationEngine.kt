@@ -82,6 +82,7 @@ internal interface TranslationGateway {
         profile: ProviderProfile,
         sourceText: String,
         targetLanguage: TargetLanguage,
+        preference: TranslationPreference = TranslationPreference.GENERAL,
         onRequestDispatched: () -> Unit = {},
         onDelta: suspend (String) -> Unit,
     ): TranslationResult
@@ -98,6 +99,7 @@ internal class TranslationEngine(
         profile: ProviderProfile,
         sourceText: String,
         targetLanguage: TargetLanguage,
+        preference: TranslationPreference,
         onRequestDispatched: () -> Unit,
         onDelta: suspend (String) -> Unit,
     ): TranslationResult = withContext(Dispatchers.IO) {
@@ -126,7 +128,7 @@ internal class TranslationEngine(
             try {
                 validateInput(profile, sourceText)
                 ProfileNetworkPolicy.requireAllowed(profile)
-                val protocolRequest = adapter.buildRequest(profile, sourceText, targetLanguage)
+                val protocolRequest = adapter.buildRequest(profile, sourceText, targetLanguage, preference)
                 val request = Request.Builder()
                     .url(profile.endpoint())
                     .post(protocolRequest.body.toRequestBody(JSON_MEDIA_TYPE))

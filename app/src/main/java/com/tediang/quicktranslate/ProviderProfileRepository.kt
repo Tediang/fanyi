@@ -79,7 +79,6 @@ internal class ProviderProfileRepository(
                     .put("endpoint_path", profile.endpointPathOverride)
                     .put("model", profile.model)
                     .put("allow_cleartext", profile.allowCleartext)
-                    .put("additional_requirements", profile.additionalRequirements)
                     .put("reasoning_effort", profile.reasoningEffort.name)
                     .put("temperature", profile.temperature ?: JSONObject.NULL)
                     .put("max_output_tokens", profile.maxOutputTokens ?: JSONObject.NULL)
@@ -128,7 +127,6 @@ internal class ProviderProfileRepository(
                             }
                         },
                         allowCleartext = stored.optBoolean("allow_cleartext"),
-                        additionalRequirements = stored.opt("additional_requirements") as? String ?: "",
                         reasoningEffort = runCatching {
                             ReasoningEffort.valueOf(stored.opt("reasoning_effort") as? String ?: "AUTO")
                         }.getOrDefault(ReasoningEffort.AUTO),
