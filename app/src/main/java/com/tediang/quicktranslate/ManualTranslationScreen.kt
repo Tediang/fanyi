@@ -230,8 +230,7 @@ private fun TranslationSessionScreen(
 
     Scaffold(
         modifier = Modifier
-            .semantics { testTagsAsResourceId = true }
-            .imePadding(),
+            .semantics { testTagsAsResourceId = true },
         topBar = {
             TopAppBar(
                 title = { Text(launch.entry.title) },
@@ -425,7 +424,11 @@ private fun SourceTextPane(
     onExpand: () -> Unit,
     modifier: Modifier,
 ) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = CardDefaults.outlinedCardBorder(),
+    ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -444,7 +447,7 @@ private fun SourceTextPane(
                 value = state.sourceText,
                 onValueChange = onSourceChange,
                 placeholder = { Text("输入或粘贴要翻译的文字") },
-                minLines = 3,
+                minLines = 1,
                 maxLines = 12,
                 enabled = !running,
                 modifier = Modifier
@@ -466,13 +469,22 @@ private fun TranslationTextPane(
     modifier: Modifier,
 ) {
     val error = state.progress is TranslationProgress.Failed
-    val contentColor = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
-    val mutedColor = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    val contentColor = if (error) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    val mutedColor = contentColor
     Card(
         modifier = modifier.fillMaxWidth().automationTag("translation_result"),
         colors = CardDefaults.cardColors(
-            containerColor = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = if (error) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.primaryContainer
+            },
         ),
+        border = CardDefaults.outlinedCardBorder(),
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(12.dp),
@@ -643,7 +655,7 @@ private fun TranslationActionBar(
     onCopy: () -> Unit,
     onPrimaryAction: () -> Unit,
 ) {
-    Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
+    Surface(tonalElevation = 0.dp, shadowElevation = 4.dp) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

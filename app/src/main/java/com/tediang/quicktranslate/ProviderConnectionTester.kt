@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.ConnectException
+import java.net.URI
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
@@ -56,9 +57,11 @@ internal class ProviderConnectionTester(
                 .build()
             httpClient.newCall(request).execute().use { response ->
                 val rawBody = response.body.string()
-                if (!response.isSuccessful) return@withContext classifyHttpFailure(response.code, rawBody)
+                if (!response.isSuccessful) {
+                    return@withContext classifyHttpFailure(response.code, rawBody, profile)
+                }
                 if (runCatching { adapter.parseSynchronous(rawBody).isNotBlank() }.getOrDefault(false)) {
-                    ConnectionTestResult.Success()
+                    ConnectionTestResult.Success("连接成功 · ${safeEndpoint(profile)}")
                 } else {
                     ConnectionTestResult.Failure(
                         ConnectionProblem.PROTOCOL,
@@ -90,7 +93,11 @@ internal class ProviderConnectionTester(
         }
     }
 
-    private fun classifyHttpFailure(status: Int, rawBody: String): ConnectionTestResult.Failure {
+    private fun classifyHttpFailure(
+        status: Int,
+        rawBody: String,
+        profile: ProviderProfile,
+    ): ConnectionTestResult.Failure {
         val detail = extractErrorMessage(rawBody)
         val lowerDetail = detail.lowercase()
         val problem = when {
@@ -111,9 +118,14 @@ internal class ProviderConnectionTester(
         }
         return ConnectionTestResult.Failure(
             problem,
-            "$prefix（HTTP $status）",
+            "$prefix（HTTP $status） · ${safeEndpoint(profile)}",
         )
     }
+
+    private fun safeEndpoint(profile: ProviderProfile): String = runCatching {
+        val endpoint = URI(profile.endpoint())
+        endpoint.host.orEmpty() + endpoint.rawPath.orEmpty()
+    }.getOrDefault("接口地址")
 
     private fun extractErrorMessage(rawBody: String): String = runCatching {
         val json = JSONObject(rawBody)

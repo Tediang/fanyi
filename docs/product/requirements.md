@@ -96,7 +96,7 @@
 2. OpenAI Responses：`/v1/responses`；
 3. Anthropic Messages：`/v1/messages`。
 
-DeepSeek、vLLM、llama.cpp 等通过其实际兼容的协议接入。协议适配器分别负责请求构造、流式事件解析、译文提取、错误提取和能力判断。
+DeepSeek、vLLM、llama.cpp 等通过其实际兼容的协议接入。通用服务沿用以上带版本号的默认路径；当基础地址为 DeepSeek 官方根地址时，App 按其官方 OpenAI 兼容入口归一化为 `/chat/completions`、`/responses`。DeepSeek Anthropic 兼容地址填写为 `https://api.deepseek.com/anthropic`，再使用标准 `/v1/messages` 路径。用户明确填写的路径覆盖始终优先。协议适配器分别负责请求构造、流式事件解析、译文提取、错误提取和能力判断。
 
 ### 7.3 生成参数
 

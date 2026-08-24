@@ -1,8 +1,8 @@
 # 安装与配置快译候选版
 
-候选版本：`0.4.0-rc3`（versionCode 6）
+候选版本：`0.4.0-rc4`（versionCode 7）
 
-当前 debug APK 的 SHA-256：`B41D190A72CD32DC7CDD27EE871F8D32D2DD4C7D1E41C73B149AA9A73ED8F18B`
+当前 debug APK 的 SHA-256：`7392828FC1FBDD12B54229946630F8376368EE03ECEA0E203F734F3B3B94CFE6`
 
 ## 安装 APK
 
@@ -28,7 +28,7 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 - 配置名称：仅用于自己识别，例如 `DeepSeek`、`家中 vLLM`。
 - 协议类型：OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。
 - Base URL：只填服务根地址，例如 `https://api.deepseek.com`。
-- 路径覆盖：通常留空，由协议自动使用 `/v1/chat/completions`、`/v1/responses` 或 `/v1/messages`。
+- 路径覆盖：通常留空。通用兼容服务按协议使用 `/v1/chat/completions`、`/v1/responses` 或 `/v1/messages`；当地址是 DeepSeek 官方根地址时，App 会按其官方 OpenAI 兼容入口使用 `/chat/completions` 或 `/responses`。
 - API Key：云服务按供应商要求填写；本地无需鉴权的服务可留空。
 - 模型：填写服务实际提供的模型名。
 
@@ -40,7 +40,8 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 | 服务 | 协议 | Base URL | 路径 | 备注 |
 | --- | --- | --- | --- | --- |
-| DeepSeek | OpenAI Chat Completions | `https://api.deepseek.com` | 留空 | 填写 DeepSeek Key 和实际模型名 |
+| DeepSeek | OpenAI Chat Completions / Responses | `https://api.deepseek.com` | 留空 | 填写 DeepSeek Key 和实际模型名；App 自动适配官方无 `/v1` 的入口 |
+| DeepSeek Anthropic 兼容 | Anthropic Messages | `https://api.deepseek.com/anthropic` | 留空 | App 自动使用 `/anthropic/v1/messages` |
 | vLLM / llama.cpp | 其声明兼容的 OpenAI 协议 | 例如 `http://192.168.1.20:8000` | 通常留空 | HTTP 只允许 localhost、`.local` 或私有局域网地址，并须显式确认明文风险 |
 | Anthropic | Anthropic Messages | `https://api.anthropic.com` | 留空 | App 自动使用 `x-api-key` 和 Anthropic 版本请求语义 |
 

@@ -6,7 +6,7 @@
 
 **Status:** ready-for-human
 
-开发候选版 `0.4.0-rc1` 已完成，安装、配置和复测步骤见 `docs/testing/install-and-configure.md` 与 `docs/testing/moto-x70-air-entry-checklist.md`。以下勾选项要求 Moto X70 Air 或真实供应商证据，保留给用户验收；模拟器结果不会代替真机结果。
+当前候选版 `0.4.0-rc4` 已完成，安装、配置和复测步骤见 `docs/testing/install-and-configure.md` 与 `docs/testing/moto-x70-air-entry-checklist.md`。以下勾选项要求 Moto X70 Air 或真实供应商证据，保留给用户验收；模拟器结果不会代替真机结果。
 
 - [x] Chrome 选词菜单能发现“快译”，完整中文、英文、混合及多段文本可以进入翻译会话；菜单实际位置被记录。
 - [ ] X 的正文、回复和编辑框分别完成选词/分享黑盒测试，不支持的宿主行为被如实记录而非伪装修复。
@@ -22,3 +22,5 @@
 ## Comments
 
 2026-08-24：用户已完成 `0.4.0-rc1` 功能复测。`readonly` 与脱敏诊断由自动化行为/安全测试验收；用户决定本轮豁免同一台 Moto 上的重复性能采样，因此 P95 项保持未通过。X 各文字表面的细分表和三种协议逐一覆盖同步、流式、取消、错误的完整矩阵仍未记录，工单继续保持 `ready-for-human`。
+
+2026-08-25：`0.4.0-rc4` 修复 Moto 软件键盘触发的翻译页整体重排，并按 DeepSeek 官方入口区分 OpenAI/Responses 无 `/v1` 路径与 Anthropic 标准 `/v1/messages` 路径；连接测试结果增加不含密钥的实际主机与路径。单元测试、Lint、构建及受控竖屏下 34 项设备测试通过，rc4 已保留配置覆盖安装到目标 Moto。真实 DeepSeek 连接与键盘手感仍待手机解锁后人工确认，因此协议验收项不提前勾选。

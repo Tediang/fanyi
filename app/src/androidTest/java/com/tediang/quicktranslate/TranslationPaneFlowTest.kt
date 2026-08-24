@@ -12,6 +12,7 @@ import androidx.test.uiautomator.Until
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -100,6 +101,26 @@ class TranslationPaneFlowTest {
 
         launchApp().use {
             assertVisible("偏好 · 正式")
+        }
+    }
+
+    @Test
+    fun sourceInputKeepsFocusAndBoundsWhileTyping() {
+        launchApp().use {
+            val before = findResource("source_text").visibleBounds
+            findResource("source_text").click()
+            assertNotNull(
+                "Source input should keep focus after the keyboard opens",
+                device.wait(Until.findObject(By.res("source_text").focused(true)), TIMEOUT_MS),
+            )
+
+            findResource("source_text").text = "输入稳定性"
+            assertVisible("输入稳定性")
+            val after = findResource("source_text").visibleBounds
+
+            assertEquals("Source input must not jump horizontally", before.left, after.left)
+            assertEquals("Source input must not jump vertically", before.top, after.top)
+            device.pressBack()
         }
     }
 

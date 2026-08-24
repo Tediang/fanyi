@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ShortcutManager
+import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -61,5 +62,18 @@ class ManifestIntegrationTest {
         assertFalse("android.permission.BIND_ACCESSIBILITY_SERVICE" in requested)
         assertFalse("android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" in requested)
         assertFalse("android.permission.CAPTURE_VIDEO_OUTPUT" in requested)
+    }
+
+    @Test
+    fun translationWindowDoesNotResizeBehindTheSoftwareKeyboard() {
+        val activity = packageManager.getActivityInfo(
+            android.content.ComponentName(context, MainActivity::class.java),
+            PackageManager.ComponentInfoFlags.of(0),
+        )
+
+        assertEquals(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING,
+            activity.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST,
+        )
     }
 }

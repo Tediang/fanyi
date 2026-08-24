@@ -1,5 +1,6 @@
 package com.tediang.quicktranslate
 
+import java.net.URI
 import java.util.UUID
 
 internal enum class ProtocolType(
@@ -46,6 +47,13 @@ internal data class ProviderProfile(
         val normalizedBase = baseUrl.trim().trimEnd('/')
         val normalizedPath = path.trim().let { if (it.startsWith('/')) it else "/$it" }
         if (endpointPathOverride.isNotBlank()) return normalizedBase + normalizedPath
+        val baseUri = runCatching { URI(normalizedBase) }.getOrNull()
+        if (baseUri?.host.equals(DEEPSEEK_API_HOST, ignoreCase = true)) {
+            val basePath = baseUri?.path.orEmpty().trimEnd('/')
+            if (basePath.isEmpty() && protocolType != ProtocolType.ANTHROPIC_MESSAGES) {
+                return normalizedBase + normalizedPath.removePrefix("/v1")
+            }
+        }
         return if (normalizedBase.endsWith("/v1") && normalizedPath.startsWith("/v1/")) {
             normalizedBase + normalizedPath.removePrefix("/v1")
         } else {
@@ -55,6 +63,7 @@ internal data class ProviderProfile(
 
     companion object {
         const val DEFAULT_INPUT_LIMIT = 20_000
+        private const val DEEPSEEK_API_HOST = "api.deepseek.com"
     }
 }
 
