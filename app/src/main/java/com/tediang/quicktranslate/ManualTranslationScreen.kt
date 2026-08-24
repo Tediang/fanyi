@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -607,7 +608,12 @@ private fun TranslationActionBar(
     val barModifier = Modifier
         .fillMaxWidth()
         .navigationBarsPadding()
-        .padding(horizontal = 16.dp, vertical = 10.dp)
+        .padding(
+            start = 16.dp,
+            top = 10.dp,
+            end = 16.dp,
+            bottom = if (landscape) 16.dp else 24.dp,
+        )
     Surface(tonalElevation = 0.dp, shadowElevation = 4.dp) {
         if (landscape) {
             Row(
@@ -734,16 +740,22 @@ private fun TranslationOptionsSheet(
     onSelectTarget: (TargetLanguage) -> Unit,
     onSelectPreference: (TranslationPreference) -> Unit,
 ) {
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val title = if (choice == TranslationChoice.TARGET) "翻译成" else "翻译风格"
     val helper = if (choice == TranslationChoice.TARGET) {
         "选择本次翻译的目标语言"
     } else {
         "随时切换表达方式，不影响供应商配置"
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 20.dp),
@@ -757,36 +769,70 @@ private fun TranslationOptionsSheet(
             )
             val options = if (choice == TranslationChoice.TARGET) {
                 TargetLanguage.entries.map { option ->
-                    ChoiceOption(option.displayName, option == targetLanguage) { onSelectTarget(option) }
+                    ChoiceOption(
+                        label = option.displayName,
+                        selected = option == targetLanguage,
+                        tag = "choice_target_${option.name}",
+                    ) { onSelectTarget(option) }
                 }
             } else {
                 TranslationPreference.entries.map { option ->
-                    ChoiceOption(option.displayName, option == preference) { onSelectPreference(option) }
+                    ChoiceOption(
+                        label = option.displayName,
+                        selected = option == preference,
+                        tag = "choice_preference_${option.name}",
+                    ) { onSelectPreference(option) }
                 }
             }
-            options.chunked(2).forEach { rowOptions ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    rowOptions.forEach { option ->
-                        FilterChip(
-                            selected = option.selected,
-                            onClick = option.onClick,
-                            label = { Text(option.label) },
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        )
+            if (landscape) {
+                options.chunked(2).forEach { rowOptions ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        rowOptions.forEach { option ->
+                            TranslationChoiceChip(
+                                option = option,
+                                modifier = Modifier.weight(1f),
+                                minHeight = 56.dp,
+                            )
+                        }
+                        if (rowOptions.size == 1) Spacer(modifier = Modifier.weight(1f))
                     }
-                    if (rowOptions.size == 1) Spacer(modifier = Modifier.weight(1f))
+                }
+            } else {
+                options.forEach { option ->
+                    TranslationChoiceChip(
+                        option = option,
+                        modifier = Modifier.fillMaxWidth(),
+                        minHeight = 72.dp,
+                    )
                 }
             }
         }
     }
 }
 
+@Composable
+private fun TranslationChoiceChip(
+    option: ChoiceOption,
+    modifier: Modifier,
+    minHeight: androidx.compose.ui.unit.Dp,
+) {
+    FilterChip(
+        selected = option.selected,
+        onClick = option.onClick,
+        label = { Text(option.label, style = MaterialTheme.typography.titleMedium) },
+        modifier = modifier
+            .heightIn(min = minHeight)
+            .automationTag(option.tag),
+    )
+}
+
 private data class ChoiceOption(
     val label: String,
     val selected: Boolean,
+    val tag: String,
     val onClick: () -> Unit,
 )
 

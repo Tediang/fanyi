@@ -18,6 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
 class TranslationPaneFlowTest {
@@ -87,10 +88,17 @@ class TranslationPaneFlowTest {
     @Test
     fun exposesFourLanguagesAndPersistsBuiltInTranslationPreference() {
         launchApp().use {
+            assertBottomControlsClearGestureEdge()
             findResource("target_selector").click()
             assertVisible("日文")
             assertVisible("韩文")
-            clickText("日文")
+            val japaneseChoice = findResource("choice_target_JAPANESE")
+            val minimumLargeChoiceHeight = (64 * context.resources.displayMetrics.density).roundToInt()
+            assertTrue(
+                "Portrait choices should provide a large full-row touch target",
+                japaneseChoice.visibleBounds.height() >= minimumLargeChoiceHeight,
+            )
+            japaneseChoice.click()
             assertVisible("目标 · 日文")
 
             findResource("preference_selector").click()
@@ -158,6 +166,12 @@ class TranslationPaneFlowTest {
         assertTrue("Expected positive visible height for ${node.resourceName}", bounds.height() > 0)
         assertTrue("Expected node inside top edge", bounds.top >= 0)
         assertTrue("Expected node inside bottom edge", bounds.bottom <= device.displayHeight)
+    }
+
+    private fun assertBottomControlsClearGestureEdge() {
+        val bottomGap = device.displayHeight - findResource("translate_button").visibleBounds.bottom
+        val minimumGap = (44 * context.resources.displayMetrics.density).roundToInt()
+        assertTrue("Bottom controls should sit clear of the gesture edge", bottomGap >= minimumGap)
     }
 
     private companion object {
