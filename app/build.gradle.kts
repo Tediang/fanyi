@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun signingProperty(name: String): String = keystoreProperties.getProperty(name)
+    ?: error("keystore.properties 缺少必填项：$name")
 
 android {
     namespace = "com.tediang.quicktranslate"
@@ -11,10 +23,28 @@ android {
         applicationId = "com.tediang.quicktranslate"
         minSdk = 35
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.0.2"
+        versionCode = 13
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(signingProperty("storeFile"))
+                storePassword = signingProperty("storePassword")
+                keyAlias = signingProperty("keyAlias")
+                keyPassword = signingProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
 
     buildFeatures {

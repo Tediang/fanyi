@@ -1,8 +1,10 @@
 # 安装与配置快译候选版
 
-正式版本：`1.0.2`（versionCode 12）
+正式版本：`1.0.3`（versionCode 13）
 
-当前 debug APK 的 SHA-256：`F3A5562F60D0832FAC71BDBD319DF4A5F110E8ADB388700BFE37CE0458BF3046`
+Release APK 的 SHA-256 以同一 GitHub Release 中的 `.apk.sha256` 文件为准。
+
+> 签名迁移：v1.0.3 是固定正式签名的首个版本。v1.0.2 及更早的 debug 签名安装包无法直接覆盖升级，需要先记录供应商配置并卸载旧版一次；卸载会清除 App 数据。安装 v1.0.3 后，后续正式签名版本可直接覆盖升级。
 
 ## 安装 APK
 

@@ -6,7 +6,7 @@
 
 [![Android build and release](https://github.com/Tediang/fanyi/actions/workflows/android-release.yml/badge.svg)](https://github.com/Tediang/fanyi/actions/workflows/android-release.yml)
 ![Android 15+](https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.0.2-2878F0)
+![Version](https://img.shields.io/badge/version-1.0.3-2878F0)
 
 [下载最新版](https://github.com/Tediang/fanyi/releases/latest) · [安装与配置](docs/testing/install-and-configure.md) · [可行性调研](docs/research/android-translation-app-feasibility.md)
 
@@ -49,10 +49,12 @@
 下载完成后可在手机上直接打开 APK 安装；也可以通过 ADB 安装：
 
 ```shell
-adb install -r quick-translate-v1.0.2.apk
+adb install -r quick-translate-v1.0.3.apk
 ```
 
 如果系统拦截安装，请只为实际打开 APK 的文件管理器或浏览器临时开启“允许安装未知应用”。无需 Root，也无需开启无障碍权限。
+
+> **签名迁移提示：** v1.0.3 是启用固定正式签名的首个版本。已安装 v1.0.2 或更早的 debug 签名版本时，Android 会要求先卸载旧版；请先记下供应商配置，卸载会清除 App 数据。从 v1.0.3 开始，后续正式版本可直接覆盖升级。
 
 ## 快速开始
 
@@ -116,7 +118,7 @@ Windows PowerShell：
 .\gradlew.bat testDebugUnitTest lintDebug assembleDebug --no-configuration-cache
 ```
 
-生成的 APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。推送到 `main` 会触发 GitHub Actions 构建；推送 `v*` 标签时会同时创建 GitHub Release。
+本地签名的 Release APK 位于 `app/build/outputs/apk/release/app-release.apk`。真实签名配置由已忽略的 `keystore.properties` 提供；可参考 `keystore.properties.example`。推送到 `main` 会触发 GitHub Actions 构建签名 APK；推送 `v*` 标签时会同时创建 GitHub Release 并附带 SHA-256 校验文件。
 
 ## 项目文档
 
