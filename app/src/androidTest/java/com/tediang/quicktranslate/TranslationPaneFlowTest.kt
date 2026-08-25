@@ -65,20 +65,27 @@ class TranslationPaneFlowTest {
 
         launchApp().use {
             findResource("source_text").text = "Long source ".repeat(80)
+            assertResourceVisible("translation_status")
+            assertVisible("等待输入")
             findResource("expand_source").click()
             assertResourceVisible("expanded_source_text")
             device.pressBack()
 
             findResource("translate_button").click()
+            assertResourceVisible("translation_status")
             assertVisible("翻译完成", prefix = true)
             assertInsideViewport(findResource("source_text"))
             assertInsideViewport(findResource("translation_result"))
+            assertResourceVisible("translation_scrollbar")
 
             findResource("expand_translation").click()
             assertResourceVisible("expanded_translation_text")
+            assertResourceVisible("expanded_translation_status")
+            assertResourceVisible("expanded_collapse")
             findResource("expanded_clear").click()
             assertVisible("暂无译文")
-            device.pressBack()
+            findResource("expanded_collapse").click()
+            assertResourceVisible("translation_result")
 
             findResource("clear_source").click()
             assertTrue(findResource("source_text").text.isNullOrEmpty())

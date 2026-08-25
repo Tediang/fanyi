@@ -79,6 +79,7 @@ class ProviderConnectionTesterTest {
 
         assertEquals(ConnectionProblem.URL, url.problem)
         assertEquals(ConnectionProblem.AUTHENTICATION, auth.problem)
+        assertTrue("Authentication diagnostics should retain the service port", auth.message.contains(":${server.port}"))
         assertFalse(auth.message.contains("never-in-visible-error"))
         assertEquals(ConnectionProblem.MODEL, model.problem)
         assertEquals(ConnectionProblem.PROTOCOL, protocol.problem)

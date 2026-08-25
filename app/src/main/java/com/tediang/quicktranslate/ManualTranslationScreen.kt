@@ -9,21 +9,27 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
@@ -59,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -67,14 +74,19 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class AppSurface { TRANSLATE, PROFILES, EDIT_PROFILE }
@@ -194,7 +206,7 @@ internal fun QuickTranslateApp(
                         resumeAfterTestProfileId = profile.id
                         surface = AppSurface.PROFILES
                     } else {
-                        surface = if (selectSaved) AppSurface.TRANSLATE else AppSurface.PROFILES
+                        surface = AppSurface.PROFILES
                     }
                 },
             )
@@ -358,7 +370,6 @@ private fun TranslationSessionScreen(
                                 focusManager.clearFocus()
                                 expandedPane = ExpandedPane.TRANSLATION
                             },
-                            previewMaxLines = 5,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -389,7 +400,6 @@ private fun TranslationSessionScreen(
                             focusManager.clearFocus()
                             expandedPane = ExpandedPane.TRANSLATION
                         },
-                        previewMaxLines = 10,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -481,9 +491,9 @@ private fun TranslationTextPane(
     state: TranslationSessionState,
     onClear: () -> Unit,
     onExpand: () -> Unit,
-    previewMaxLines: Int,
     modifier: Modifier,
 ) {
+    val elapsedMillis = rememberTranslationElapsedMillis(state.progress)
     val error = state.progress is TranslationProgress.Failed
     val contentColor = if (error) {
         MaterialTheme.colorScheme.onErrorContainer
@@ -517,27 +527,74 @@ private fun TranslationTextPane(
                 expandDescription = "全屏查看译文",
                 tagPrefix = "translation",
                 contentColor = contentColor,
+                centerLabel = translationStatus(state.progress, state.translatedText, elapsedMillis),
             )
+            TranslationPreview(
+                text = state.translatedText.ifBlank { "暂无译文" },
+                textColor = if (state.translatedText.isBlank()) mutedColor else contentColor,
+                scrollBarColor = contentColor,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TranslationPreview(
+    text: String,
+    textColor: androidx.compose.ui.graphics.Color,
+    scrollBarColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier,
+) {
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+
+    BoxWithConstraints(
+        modifier = modifier.automationTag("translation_scroll"),
+    ) {
+        SelectionContainer {
             Text(
-                translationStatus(state.progress, state.translatedText),
-                style = MaterialTheme.typography.bodySmall,
-                color = mutedColor,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                text,
+                style = MaterialTheme.typography.bodyLarge,
+                color = textColor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                    .automationTag("translation_text"),
             )
-            SelectionContainer {
-                Text(
-                    state.translatedText.ifBlank { "暂无译文" },
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (state.translatedText.isBlank()) mutedColor else contentColor,
-                    maxLines = previewMaxLines,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp, vertical = 6.dp)
-                        .automationTag("translation_text"),
-                )
-            }
+        }
+
+        if (scrollState.maxValue > 0 && scrollState.viewportSize > 0) {
+            val trackHeightPx = with(density) { maxHeight.toPx() - 12.dp.toPx() }
+            val minThumbHeightPx = with(density) { 24.dp.toPx() }.coerceAtMost(trackHeightPx)
+            val contentHeightPx = scrollState.viewportSize + scrollState.maxValue
+            val thumbHeightPx = (trackHeightPx * scrollState.viewportSize / contentHeightPx)
+                .coerceIn(minThumbHeightPx, trackHeightPx)
+            val thumbOffsetPx = (trackHeightPx - thumbHeightPx) *
+                scrollState.value.toFloat() / scrollState.maxValue.toFloat()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 2.dp, top = 6.dp, bottom = 6.dp)
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(scrollBarColor.copy(alpha = 0.10f)),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset { IntOffset(0, thumbOffsetPx.roundToInt()) }
+                    .padding(end = 2.dp, top = 6.dp)
+                    .width(4.dp)
+                    .height(with(density) { thumbHeightPx.toDp() })
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(scrollBarColor.copy(alpha = 0.55f))
+                    .automationTag("translation_scrollbar"),
+            )
         }
     }
 }
@@ -552,6 +609,7 @@ private fun PaneHeader(
     centerActionLabel: String? = null,
     onCenterAction: (() -> Unit)? = null,
     centerActionEnabled: Boolean = true,
+    centerLabel: String? = null,
     clearDescription: String,
     expandDescription: String,
     tagPrefix: String,
@@ -603,6 +661,22 @@ private fun PaneHeader(
             }
         }
 
+        if (centerActionLabel == null && centerLabel != null) {
+            Text(
+                centerLabel,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                color = contentColor.copy(alpha = 0.78f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.52f)
+                    .automationTag("${tagPrefix}_status"),
+            )
+        }
+
         Row(
             modifier = Modifier.align(Alignment.CenterEnd),
             verticalAlignment = Alignment.CenterVertically,
@@ -635,12 +709,36 @@ private fun ExpandedTextScreen(
     onBack: () -> Unit,
 ) {
     val text = if (pane == ExpandedPane.SOURCE) state.sourceText else state.translatedText
+    val elapsedMillis = rememberTranslationElapsedMillis(state.progress)
     Scaffold(
         modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = {
-                    Text("${if (pane == ExpandedPane.SOURCE) "原文" else "译文"} · ${unicodeCharacterCount(text)} 字")
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                    ) {
+                        Text(
+                            if (pane == ExpandedPane.SOURCE) {
+                                "原文 · ${unicodeCharacterCount(text)} 字"
+                            } else {
+                                "译文 · ${unicodeCharacterCount(text)} 字"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (pane == ExpandedPane.TRANSLATION) {
+                            Text(
+                                translationStatus(state.progress, state.translatedText, elapsedMillis),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.automationTag("expanded_translation_status"),
+                            )
+                        }
+                    }
                 },
                 navigationIcon = { TextButton(onClick = onBack) { Text("返回") } },
                 actions = {
@@ -652,6 +750,15 @@ private fun ExpandedTextScreen(
                         Icon(
                             painterResource(R.drawable.ic_clear_content),
                             contentDescription = if (pane == ExpandedPane.SOURCE) "清空原文" else "清空译文",
+                        )
+                    }
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.automationTag("expanded_collapse"),
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_collapse_content),
+                            contentDescription = "收回窗口",
                         )
                     }
                 },
@@ -679,11 +786,6 @@ private fun ExpandedTextScreen(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    translationStatus(state.progress, state.translatedText),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 SelectionContainer {
                     Text(
                         state.translatedText.ifBlank { "暂无译文" },
@@ -696,10 +798,35 @@ private fun ExpandedTextScreen(
     }
 }
 
-private fun translationStatus(progress: TranslationProgress, translatedText: String): String = when (progress) {
+@Composable
+private fun rememberTranslationElapsedMillis(progress: TranslationProgress): Long {
+    val startedAt = (progress as? TranslationProgress.Running)?.startedAtElapsedRealtime
+    var elapsedMillis by remember(startedAt) {
+        mutableStateOf(startedAt?.let { (monotonicElapsedRealtime() - it).coerceAtLeast(0L) } ?: 0L)
+    }
+    LaunchedEffect(startedAt) {
+        if (startedAt == null) return@LaunchedEffect
+        while (true) {
+            elapsedMillis = (monotonicElapsedRealtime() - startedAt).coerceAtLeast(0L)
+            delay(100L)
+        }
+    }
+    return elapsedMillis
+}
+
+private fun monotonicElapsedRealtime(): Long = System.nanoTime() / 1_000_000L
+
+private fun translationStatus(
+    progress: TranslationProgress,
+    translatedText: String,
+    elapsedMillis: Long,
+): String = when (progress) {
     TranslationProgress.Idle -> "等待输入"
-    TranslationProgress.Running -> if (translatedText.isEmpty()) "正在连接…" else "正在翻译…"
-    is TranslationProgress.Completed -> "翻译完成 · ${progress.diagnostics.totalMs}ms"
+    is TranslationProgress.Running -> {
+        val phase = if (translatedText.isEmpty()) "正在连接…" else "正在翻译…"
+        "$phase · 耗时 ${elapsedMillis}ms"
+    }
+    is TranslationProgress.Completed -> "翻译完成 · 耗时 ${progress.diagnostics.totalMs}ms"
     is TranslationProgress.Failed -> if (progress.incomplete) "结果不完整：${progress.message}" else progress.message
     TranslationProgress.Cancelled -> "已取消"
 }

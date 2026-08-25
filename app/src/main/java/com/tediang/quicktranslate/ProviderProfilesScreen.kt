@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -173,25 +174,27 @@ private fun CurrentProviderSummary(profile: ProviderProfile) {
         modifier = Modifier.fillMaxWidth().automationTag("current_provider_summary"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
                 "当前使用",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                profile.name,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                "${profile.protocolType.displayName} · ${profile.model}",
-                style = MaterialTheme.typography.bodyMedium,
+                profile.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -259,7 +262,7 @@ private fun ProviderProfileCard(
                 Text(
                     if (profile.allowCleartext) "已允许此配置使用明文 HTTP" else "明文 HTTP 已阻止",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             testResult?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -304,7 +307,8 @@ internal fun ProviderProfileEditorScreen(
     }
     var baseUrl by rememberSaveable { mutableStateOf(existing?.baseUrl ?: "https://") }
     var endpointPath by rememberSaveable { mutableStateOf(existing?.endpointPathOverride.orEmpty()) }
-    var apiKeyInput by remember { mutableStateOf("") }
+    var apiKeyInput by rememberSaveable(existing?.id) { mutableStateOf(existing?.apiKey.orEmpty()) }
+    var apiKeyVisible by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var model by rememberSaveable { mutableStateOf(existing?.model.orEmpty()) }
     var allowCleartext by rememberSaveable { mutableStateOf(existing?.allowCleartext == true) }
     var reasoningName by rememberSaveable {
@@ -487,11 +491,23 @@ internal fun ProviderProfileEditorScreen(
                 onValueChange = { apiKeyInput = it },
                 label = { Text("API Key（可选）") },
                 supportingText = {
-                    Text(if (existing?.apiKey?.isNotBlank() == true) "已保存；留空保持不变" else "在本机加密保存")
+                    Text(if (existing?.apiKey?.isNotBlank() == true) "已保存；可查看或替换，修改后保存" else "在本机加密保存")
                 },
-                visualTransformation = PasswordVisualTransformation(),
+                visualTransformation = if (apiKeyVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation('*')
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
+                trailingIcon = {
+                    androidx.compose.material3.IconButton(
+                        onClick = { apiKeyVisible = !apiKeyVisible },
+                        modifier = Modifier.automationTag("toggle_api_key_visibility"),
+                    ) {
+                        Text(if (apiKeyVisible) "隐藏" else "显示")
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().automationTag("profile_api_key"),
             )
             OutlinedTextField(
@@ -638,7 +654,7 @@ internal fun ProviderProfileEditorScreen(
                     Text(
                         "仅用于你信任的局域网；原文、译文和凭据可能被同网段设备看到。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

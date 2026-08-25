@@ -109,11 +109,11 @@ internal class ProviderConnectionTester(
             else -> ConnectionProblem.PROTOCOL
         }
         val prefix = when (problem) {
-            ConnectionProblem.AUTHENTICATION -> "鉴权失败"
-            ConnectionProblem.RATE_LIMIT -> "服务限流"
-            ConnectionProblem.MODEL -> "模型不可用"
-            ConnectionProblem.URL -> "接口地址不存在"
-            ConnectionProblem.SERVER -> "服务端错误"
+            ConnectionProblem.AUTHENTICATION -> "鉴权失败，请检查 API Key、协议类型和接口路径"
+            ConnectionProblem.RATE_LIMIT -> "服务限流，请稍后重试"
+            ConnectionProblem.MODEL -> "模型不可用，请检查模型名称"
+            ConnectionProblem.URL -> "接口地址不存在，请检查 Base URL 和路径"
+            ConnectionProblem.SERVER -> "服务端错误，请稍后重试"
             else -> "协议请求失败"
         }
         return ConnectionTestResult.Failure(
@@ -124,7 +124,11 @@ internal class ProviderConnectionTester(
 
     private fun safeEndpoint(profile: ProviderProfile): String = runCatching {
         val endpoint = URI(profile.endpoint())
-        endpoint.host.orEmpty() + endpoint.rawPath.orEmpty()
+        val host = endpoint.host.orEmpty().let { value ->
+            if (value.contains(':')) "[$value]" else value
+        }
+        val port = endpoint.port.takeIf { it != -1 }?.let { ":$it" }.orEmpty()
+        host + port + endpoint.rawPath.orEmpty()
     }.getOrDefault("接口地址")
 
     private fun extractErrorMessage(rawBody: String): String = runCatching {

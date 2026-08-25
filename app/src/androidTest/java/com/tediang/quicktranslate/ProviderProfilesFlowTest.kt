@@ -88,6 +88,27 @@ class ProviderProfilesFlowTest {
         }
     }
 
+    @Test
+    fun savesNewProfileAndReturnsToProviderListWithApiKeyVisibilityToggle() {
+        launchApp().use {
+            clickText("供应商")
+            clickText("新增")
+
+            findResource("profile_name").text = "新服务"
+            findResource("profile_base_url").text = "https://api.example.com"
+            findResource("profile_model").text = "new-model"
+            findResource("profile_api_key").text = "new-secret"
+            assertResourceVisible("toggle_api_key_visibility")
+
+            findResource("toggle_api_key_visibility").click()
+            assertVisible("隐藏")
+            findResource("save_profile").click()
+
+            assertVisible("供应商配置")
+            assertVisible("新服务")
+        }
+    }
+
     private fun launchApp(): ActivityScenario<MainActivity> {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         return ActivityScenario.launch(

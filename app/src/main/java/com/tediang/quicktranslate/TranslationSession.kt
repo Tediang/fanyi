@@ -71,7 +71,7 @@ internal data class TranslationLaunch(
 
 internal sealed interface TranslationProgress {
     data object Idle : TranslationProgress
-    data object Running : TranslationProgress
+    data class Running(val startedAtElapsedRealtime: Long) : TranslationProgress
     data class Completed(val diagnostics: TranslationDiagnostics) : TranslationProgress
     data class Failed(
         val type: TranslationErrorType,
@@ -156,7 +156,7 @@ internal class TranslationSessionController(
         mutableState.value = mutableState.value.copy(
             sourceText = source,
             translatedText = "",
-            progress = TranslationProgress.Running,
+            progress = TranslationProgress.Running(monotonicElapsedRealtime()),
         )
         val target = mutableState.value.targetLanguage
         val preference = mutableState.value.preference
@@ -249,6 +249,12 @@ internal class TranslationSessionController(
         requestId += 1
         activeJob?.cancel()
         activeJob = null
+    }
+
+    private fun monotonicElapsedRealtime(): Long = System.nanoTime() / NANOS_PER_MILLISECOND
+
+    private companion object {
+        const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }
 

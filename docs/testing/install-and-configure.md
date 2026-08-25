@@ -1,6 +1,6 @@
 # 安装与配置快译候选版
 
-正式版本：`1.0.3`（versionCode 13）
+正式版本：`1.0.4`（versionCode 14）
 
 Release APK 的 SHA-256 以同一 GitHub Release 中的 `.apk.sha256` 文件为准。
 
