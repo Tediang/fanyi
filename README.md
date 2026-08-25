@@ -6,7 +6,7 @@
 
 [![Android build and release](https://github.com/Tediang/fanyi/actions/workflows/android-release.yml/badge.svg)](https://github.com/Tediang/fanyi/actions/workflows/android-release.yml)
 ![Android 15+](https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.0.1-2878F0)
+![Version](https://img.shields.io/badge/version-1.0.2-2878F0)
 
 [下载最新版](https://github.com/Tediang/fanyi/releases/latest) · [安装与配置](docs/testing/install-and-configure.md) · [可行性调研](docs/research/android-translation-app-feasibility.md)
 
@@ -34,6 +34,7 @@
 - **多个快捷入口**：支持 Android 标准选词菜单（`PROCESS_TEXT`）、文字分享、手动输入与剪贴板粘贴。
 - **适配 Moto AI 快捷键**：可将物理键配置为启动“快译 - 翻译剪贴板”，复制文字后快速进入翻译。
 - **四种目标语言**：简体中文、英语、日语、韩语直接平铺切换。
+- **单词自动详解**：中英日韩单个词条自动使用字典式结果，提供读音、词性、常见释义和双语例句；句子与段落保持普通翻译。
 - **六种翻译风格**：通用、正式、口语、书信、学术、文学，切换风格不会改动供应商配置。
 - **长文本友好**：原文和译文等高显示，分别支持展开、清空、字数统计，并可一键复制译文。
 - **流式输出**：模型返回内容时逐步显示译文，减少等待感；也可以在高级配置中关闭。
@@ -48,7 +49,7 @@
 下载完成后可在手机上直接打开 APK 安装；也可以通过 ADB 安装：
 
 ```shell
-adb install -r quick-translate-v1.0.1.apk
+adb install -r quick-translate-v1.0.2.apk
 ```
 
 如果系统拦截安装，请只为实际打开 APK 的文件管理器或浏览器临时开启“允许安装未知应用”。无需 Root，也无需开启无障碍权限。
