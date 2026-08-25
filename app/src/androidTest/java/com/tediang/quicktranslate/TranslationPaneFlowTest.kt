@@ -89,14 +89,13 @@ class TranslationPaneFlowTest {
     fun exposesFourLanguagesAndPersistsBuiltInTranslationPreference() {
         launchApp().use {
             assertBottomControlsClearGestureEdge()
-            findResource("target_selector").click()
             assertVisible("日文")
             assertVisible("韩文")
             val japaneseChoice = findResource("choice_target_JAPANESE")
-            val minimumLargeChoiceHeight = (64 * context.resources.displayMetrics.density).roundToInt()
+            val minimumChoiceHeight = (48 * context.resources.displayMetrics.density).roundToInt()
             assertTrue(
-                "Portrait choices should provide a large full-row touch target",
-                japaneseChoice.visibleBounds.height() >= minimumLargeChoiceHeight,
+                "Inline language choices should meet the Android touch target minimum",
+                japaneseChoice.visibleBounds.height() >= minimumChoiceHeight,
             )
             japaneseChoice.click()
             assertVisible("目标 · 日文")
@@ -129,6 +128,31 @@ class TranslationPaneFlowTest {
             assertEquals("Source input must not jump horizontally", before.left, after.left)
             assertEquals("Source input must not jump vertically", before.top, after.top)
             device.pressBack()
+        }
+    }
+
+    @Test
+    fun sourceAutoFocusesOnlyUntilTheUserMovesFocusAway() {
+        launchApp().use {
+            val focusedSource = By.res("source_text").focused(true)
+            assertNotNull(
+                "Source should receive focus on initial entry",
+                device.wait(Until.findObject(focusedSource), TIMEOUT_MS),
+            )
+
+            findResource("preference_selector").click()
+            assertTrue(
+                "Opening another control should release source focus",
+                device.wait(Until.gone(focusedSource), TIMEOUT_MS),
+            )
+            device.pressBack()
+            assertTrue("Recomposition must not reclaim source focus", device.findObject(focusedSource) == null)
+
+            findResource("source_text").click()
+            assertNotNull(
+                "The user can focus the source again explicitly",
+                device.wait(Until.findObject(focusedSource), TIMEOUT_MS),
+            )
         }
     }
 

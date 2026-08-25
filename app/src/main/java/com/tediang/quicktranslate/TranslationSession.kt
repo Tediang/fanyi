@@ -29,7 +29,6 @@ internal data class TranslationLaunch(
     val entry: TranslationEntry,
     val sourceText: String,
     val autoTranslate: Boolean,
-    val focusInput: Boolean,
     val readOnlyFromHost: Boolean = false,
     val urlOnly: Boolean = false,
 ) {
@@ -38,7 +37,6 @@ internal data class TranslationLaunch(
             entry = TranslationEntry.MANUAL,
             sourceText = "",
             autoTranslate = false,
-            focusInput = false,
         )
 
         fun fromIntent(intent: Intent?): TranslationLaunch = when (intent?.action) {
@@ -48,7 +46,6 @@ internal data class TranslationLaunch(
                     entry = TranslationEntry.PROCESS_TEXT,
                     sourceText = text,
                     autoTranslate = text.isNotBlank(),
-                    focusInput = text.isBlank(),
                     readOnlyFromHost = intent.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false),
                 )
             }
@@ -58,7 +55,6 @@ internal data class TranslationLaunch(
                     entry = TranslationEntry.SHARE,
                     sourceText = text,
                     autoTranslate = text.isNotBlank(),
-                    focusInput = text.isBlank(),
                     readOnlyFromHost = true,
                     urlOnly = text.isHttpUrlOnly(),
                 )
@@ -67,7 +63,6 @@ internal data class TranslationLaunch(
                 entry = TranslationEntry.CLIPBOARD_SHORTCUT,
                 sourceText = "",
                 autoTranslate = false,
-                focusInput = true,
             )
             else -> manual()
         }
@@ -323,14 +318,12 @@ internal class ClipboardShortcutResolver(private val context: Context) {
                     entry = TranslationEntry.CLIPBOARD_SHORTCUT,
                     sourceText = decision.text,
                     autoTranslate = true,
-                    focusInput = false,
                 )
             }
             is ClipboardDecision.ManualInput -> TranslationLaunch(
                 entry = TranslationEntry.CLIPBOARD_SHORTCUT,
                 sourceText = "",
                 autoTranslate = false,
-                focusInput = true,
             )
         }
     }

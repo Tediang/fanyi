@@ -5,10 +5,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,11 +27,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,14 +57,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,7 +79,6 @@ import kotlinx.coroutines.launch
 
 private enum class AppSurface { TRANSLATE, PROFILES, EDIT_PROFILE }
 private enum class ExpandedPane { SOURCE, TRANSLATION }
-private enum class TranslationChoice { TARGET, PREFERENCE }
 
 @Composable
 internal fun QuickTranslateApp(
@@ -205,20 +215,18 @@ private fun TranslationSessionScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val sourceFocusRequester = remember { FocusRequester() }
     val state by controller.state.collectAsState()
     var expandedPane by rememberSaveable { mutableStateOf<ExpandedPane?>(null) }
-    var translationChoice by rememberSaveable { mutableStateOf<TranslationChoice?>(null) }
-    LaunchedEffect(launch.id, launch.focusInput) {
-        if (launch.focusInput) focusRequester.requestFocus()
+    var showPreferenceSheet by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(launch.id) {
+        withFrameNanos { }
+        sourceFocusRequester.requestFocus()
     }
 
     val running = state.progress is TranslationProgress.Running
-    val diagnostics = when (val progress = state.progress) {
-        is TranslationProgress.Completed -> progress.diagnostics
-        is TranslationProgress.Failed -> progress.diagnostics
-        else -> null
-    }
 
     expandedPane?.let { pane ->
         BackHandler { expandedPane = null }
@@ -240,9 +248,33 @@ private fun TranslationSessionScreen(
             .semantics { testTagsAsResourceId = true },
         topBar = {
             TopAppBar(
+                modifier = Modifier.clearFocusOnUnconsumedTap { focusManager.clearFocus() },
                 title = { Text(launch.entry.title) },
-                navigationIcon = { TextButton(onClick = onClose) { Text("关闭") } },
-                actions = { TextButton(onClick = onOpenProfiles, enabled = !running) { Text("供应商") } },
+                navigationIcon = {
+                    TextButton(onClick = {
+                        focusManager.clearFocus()
+                        onClose()
+                    }) { Text("关闭") }
+                },
+                actions = {
+                    TextButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showPreferenceSheet = true
+                        },
+                        enabled = !running,
+                        modifier = Modifier.automationTag("preference_selector"),
+                    ) {
+                        Text("风格 · ${state.preference.displayName}")
+                    }
+                    TextButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            onOpenProfiles()
+                        },
+                        enabled = !running,
+                    ) { Text("供应商") }
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -250,27 +282,34 @@ private fun TranslationSessionScreen(
             TranslationActionBar(
                 state = state,
                 running = running,
-                onChooseTarget = { translationChoice = TranslationChoice.TARGET },
-                onChoosePreference = { translationChoice = TranslationChoice.PREFERENCE },
-                onPaste = {
-                    val clipboard = context.getSystemService(ClipboardManager::class.java)
-                    val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
-                        ?.getItemAt(0)?.text?.toString().orEmpty()
-                    if (text.isNotBlank()) controller.updateSource(text)
+                onDismissFocus = { focusManager.clearFocus() },
+                onSelectTarget = {
+                    focusManager.clearFocus()
+                    controller.selectTarget(it)
                 },
                 onCopy = {
+                    focusManager.clearFocus()
                     copyText(context, "快译译文", state.translatedText)
                     scope.launch { snackbarHostState.showSnackbar("译文已复制") }
                 },
                 onPrimaryAction = {
+                    focusManager.clearFocus()
                     if (running) controller.cancel() else controller.start(profile)
                 },
             )
         },
     ) { contentPadding ->
+        val pasteSource = {
+            focusManager.clearFocus()
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.text?.toString().orEmpty()
+            if (text.isNotBlank()) controller.updateSource(text)
+        }
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
+                .clearFocusOnUnconsumedTap { focusManager.clearFocus() }
                 .padding(contentPadding),
         ) {
             val landscape = maxWidth > maxHeight
@@ -288,15 +327,6 @@ private fun TranslationSessionScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                val copyDiagnostics: (() -> Unit)? = diagnostics
-                    ?.takeIf { state.progress is TranslationProgress.Failed }
-                    ?.let {
-                        {
-                            copyText(context, "快译脱敏诊断", it.asSanitizedText())
-                            scope.launch { snackbarHostState.showSnackbar("脱敏诊断已复制") }
-                            Unit
-                        }
-                    }
                 if (landscape) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -305,17 +335,29 @@ private fun TranslationSessionScreen(
                         SourceTextPane(
                             state = state,
                             running = running,
-                            focusRequester = focusRequester,
+                            focusRequester = sourceFocusRequester,
                             onSourceChange = controller::updateSource,
-                            onClear = controller::clearSource,
-                            onExpand = { expandedPane = ExpandedPane.SOURCE },
+                            onPaste = pasteSource,
+                            onClear = {
+                                focusManager.clearFocus()
+                                controller.clearSource()
+                            },
+                            onExpand = {
+                                focusManager.clearFocus()
+                                expandedPane = ExpandedPane.SOURCE
+                            },
                             modifier = Modifier.weight(1f),
                         )
                         TranslationTextPane(
                             state = state,
-                            onClear = controller::clearTranslation,
-                            onExpand = { expandedPane = ExpandedPane.TRANSLATION },
-                            onCopyDiagnostics = copyDiagnostics,
+                            onClear = {
+                                focusManager.clearFocus()
+                                controller.clearTranslation()
+                            },
+                            onExpand = {
+                                focusManager.clearFocus()
+                                expandedPane = ExpandedPane.TRANSLATION
+                            },
                             previewMaxLines = 5,
                             modifier = Modifier.weight(1f),
                         )
@@ -324,38 +366,44 @@ private fun TranslationSessionScreen(
                     SourceTextPane(
                         state = state,
                         running = running,
-                        focusRequester = focusRequester,
+                        focusRequester = sourceFocusRequester,
                         onSourceChange = controller::updateSource,
-                        onClear = controller::clearSource,
-                        onExpand = { expandedPane = ExpandedPane.SOURCE },
-                        modifier = Modifier.weight(0.9f),
+                        onPaste = pasteSource,
+                        onClear = {
+                            focusManager.clearFocus()
+                            controller.clearSource()
+                        },
+                        onExpand = {
+                            focusManager.clearFocus()
+                            expandedPane = ExpandedPane.SOURCE
+                        },
+                        modifier = Modifier.weight(1f),
                     )
                     TranslationTextPane(
                         state = state,
-                        onClear = controller::clearTranslation,
-                        onExpand = { expandedPane = ExpandedPane.TRANSLATION },
-                        onCopyDiagnostics = copyDiagnostics,
+                        onClear = {
+                            focusManager.clearFocus()
+                            controller.clearTranslation()
+                        },
+                        onExpand = {
+                            focusManager.clearFocus()
+                            expandedPane = ExpandedPane.TRANSLATION
+                        },
                         previewMaxLines = 10,
-                        modifier = Modifier.weight(1.1f),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
         }
     }
 
-    translationChoice?.let { choice ->
-        TranslationOptionsSheet(
-            choice = choice,
-            targetLanguage = state.targetLanguage,
+    if (showPreferenceSheet) {
+        TranslationPreferenceSheet(
             preference = state.preference,
-            onDismiss = { translationChoice = null },
-            onSelectTarget = {
-                controller.selectTarget(it)
-                translationChoice = null
-            },
+            onDismiss = { showPreferenceSheet = false },
             onSelectPreference = {
                 onSelectPreference(it)
-                translationChoice = null
+                showPreferenceSheet = false
             },
         )
     }
@@ -367,6 +415,7 @@ private fun SourceTextPane(
     running: Boolean,
     focusRequester: FocusRequester,
     onSourceChange: (String) -> Unit,
+    onPaste: () -> Unit,
     onClear: () -> Unit,
     onExpand: () -> Unit,
     modifier: Modifier,
@@ -377,8 +426,9 @@ private fun SourceTextPane(
         border = CardDefaults.outlinedCardBorder(),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 8.dp, top = 0.dp, end = 8.dp, bottom = 8.dp),
         ) {
             PaneHeader(
                 title = "原文",
@@ -386,21 +436,41 @@ private fun SourceTextPane(
                 canClear = state.sourceText.isNotEmpty() && !running,
                 onClear = onClear,
                 onExpand = onExpand,
+                centerActionLabel = "粘贴原文",
+                onCenterAction = onPaste,
+                centerActionEnabled = !running,
                 clearDescription = "清空原文",
                 expandDescription = "全屏编辑原文",
                 tagPrefix = "source",
             )
-            OutlinedTextField(
+            BasicTextField(
                 value = state.sourceText,
                 onValueChange = onSourceChange,
-                placeholder = { Text("输入或粘贴要翻译的文字") },
-                minLines = 1,
-                maxLines = 12,
                 enabled = !running,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier
                     .fillMaxSize()
                     .focusRequester(focusRequester)
                     .automationTag("source_text"),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        if (state.sourceText.isEmpty()) {
+                            Text(
+                                "输入或粘贴要翻译的文字",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
             )
         }
     }
@@ -411,7 +481,6 @@ private fun TranslationTextPane(
     state: TranslationSessionState,
     onClear: () -> Unit,
     onExpand: () -> Unit,
-    onCopyDiagnostics: (() -> Unit)?,
     previewMaxLines: Int,
     modifier: Modifier,
 ) {
@@ -434,8 +503,9 @@ private fun TranslationTextPane(
         border = CardDefaults.outlinedCardBorder(),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 8.dp, top = 0.dp, end = 8.dp, bottom = 8.dp),
         ) {
             PaneHeader(
                 title = "译文",
@@ -454,6 +524,7 @@ private fun TranslationTextPane(
                 color = mutedColor,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
             SelectionContainer {
                 Text(
@@ -462,11 +533,10 @@ private fun TranslationTextPane(
                     color = if (state.translatedText.isBlank()) mutedColor else contentColor,
                     maxLines = previewMaxLines,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.automationTag("translation_text"),
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp, vertical = 6.dp)
+                        .automationTag("translation_text"),
                 )
-            }
-            onCopyDiagnostics?.let {
-                TextButton(onClick = it) { Text("复制脱敏诊断") }
             }
         }
     }
@@ -479,37 +549,77 @@ private fun PaneHeader(
     canClear: Boolean,
     onClear: () -> Unit,
     onExpand: () -> Unit,
+    centerActionLabel: String? = null,
+    onCenterAction: (() -> Unit)? = null,
+    centerActionEnabled: Boolean = true,
     clearDescription: String,
     expandDescription: String,
     tagPrefix: String,
     contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
 ) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = contentColor,
-        )
-        Text(
-            " · $count 字",
-            style = MaterialTheme.typography.labelMedium,
-            color = contentColor,
-            modifier = Modifier.automationTag("${tagPrefix}_count"),
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        IconButton(
-            onClick = onClear,
-            enabled = canClear,
-            modifier = Modifier.size(48.dp).automationTag("clear_$tagPrefix"),
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(painterResource(R.drawable.ic_clear_content), contentDescription = clearDescription)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor,
+            )
+            Text(
+                " · $count 字",
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor,
+                modifier = Modifier.automationTag("${tagPrefix}_count"),
+            )
         }
-        IconButton(
-            onClick = onExpand,
-            modifier = Modifier.size(48.dp).automationTag("expand_$tagPrefix"),
+
+        if (centerActionLabel != null && onCenterAction != null) {
+            TextButton(
+                onClick = onCenterAction,
+                enabled = centerActionEnabled,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = contentColor.copy(alpha = 0.78f),
+                ),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .heightIn(min = 48.dp)
+                    .automationTag("paste_source"),
+            ) {
+                Text(
+                    centerActionLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(painterResource(R.drawable.ic_expand_content), contentDescription = expandDescription)
+            IconButton(
+                onClick = onClear,
+                enabled = canClear,
+                modifier = Modifier.size(48.dp).automationTag("clear_$tagPrefix"),
+            ) {
+                Icon(painterResource(R.drawable.ic_clear_content), contentDescription = clearDescription)
+            }
+            IconButton(
+                onClick = onExpand,
+                modifier = Modifier.size(48.dp).automationTag("expand_$tagPrefix"),
+            ) {
+                Icon(painterResource(R.drawable.ic_expand_content), contentDescription = expandDescription)
+            }
         }
     }
 }
@@ -598,9 +708,8 @@ private fun translationStatus(progress: TranslationProgress, translatedText: Str
 private fun TranslationActionBar(
     state: TranslationSessionState,
     running: Boolean,
-    onChooseTarget: () -> Unit,
-    onChoosePreference: () -> Unit,
-    onPaste: () -> Unit,
+    onDismissFocus: () -> Unit,
+    onSelectTarget: (TargetLanguage) -> Unit,
     onCopy: () -> Unit,
     onPrimaryAction: () -> Unit,
 ) {
@@ -614,35 +723,72 @@ private fun TranslationActionBar(
             end = 16.dp,
             bottom = if (landscape) 16.dp else 24.dp,
         )
-    Surface(tonalElevation = 0.dp, shadowElevation = 4.dp) {
-        if (landscape) {
+    Surface(
+        modifier = Modifier.clearFocusOnUnconsumedTap(onDismissFocus),
+        tonalElevation = 0.dp,
+        shadowElevation = 4.dp,
+    ) {
+        Column(
+            modifier = barModifier,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TargetLanguageRow(
+                selectedLanguage = state.targetLanguage,
+                enabled = !running,
+                onSelect = onSelectTarget,
+            )
             Row(
-                modifier = barModifier,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                TranslationTargetButton(state, running, onChooseTarget, Modifier.weight(1.1f))
-                TranslationPreferenceButton(state, running, onChoosePreference, Modifier.weight(1f))
-                TranslationSecondaryButton(state, running, onPaste, onCopy, Modifier.weight(0.9f))
-                TranslationPrimaryButton(state, running, onPrimaryAction, Modifier.weight(1.1f))
+                TranslationSecondaryButton(state, running, onCopy, Modifier.weight(1f))
+                TranslationPrimaryButton(state, running, onPrimaryAction, Modifier.weight(1.35f))
             }
-        } else {
-            Column(
-                modifier = barModifier,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+        }
+    }
+}
+
+@Composable
+private fun TargetLanguageRow(
+    selectedLanguage: TargetLanguage,
+    enabled: Boolean,
+    onSelect: (TargetLanguage) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .automationTag("target_selector"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TargetLanguage.entries.forEach { language ->
+            val buttonModifier = Modifier
+                .weight(1f)
+                .heightIn(min = 52.dp)
+                .semantics { selected = language == selectedLanguage }
+                .automationTag("choice_target_${language.name}")
+            val label = when (language) {
+                TargetLanguage.SIMPLIFIED_CHINESE -> "中文"
+                TargetLanguage.ENGLISH -> "英文"
+                TargetLanguage.JAPANESE -> "日文"
+                TargetLanguage.KOREAN -> "韩文"
+            }
+            if (language == selectedLanguage) {
+                FilledTonalButton(
+                    onClick = { onSelect(language) },
+                    enabled = enabled,
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    modifier = buttonModifier,
                 ) {
-                    TranslationTargetButton(state, running, onChooseTarget, Modifier.weight(1f))
-                    TranslationPreferenceButton(state, running, onChoosePreference, Modifier.weight(1f))
+                    Text(label, maxLines = 1, fontWeight = FontWeight.SemiBold)
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+            } else {
+                OutlinedButton(
+                    onClick = { onSelect(language) },
+                    enabled = enabled,
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    modifier = buttonModifier,
                 ) {
-                    TranslationSecondaryButton(state, running, onPaste, onCopy, Modifier.weight(1f))
-                    TranslationPrimaryButton(state, running, onPrimaryAction, Modifier.weight(1.35f))
+                    Text(label, maxLines = 1, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -650,59 +796,18 @@ private fun TranslationActionBar(
 }
 
 @Composable
-private fun TranslationTargetButton(
-    state: TranslationSessionState,
-    running: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier,
-) {
-    FilledTonalButton(
-        onClick = onClick,
-        enabled = !running,
-        modifier = modifier.automationTag("target_selector"),
-    ) {
-        Text(
-            "目标 · ${state.targetLanguage.displayName}",
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun TranslationPreferenceButton(
-    state: TranslationSessionState,
-    running: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier,
-) {
-    FilledTonalButton(
-        onClick = onClick,
-        enabled = !running,
-        modifier = modifier.automationTag("preference_selector"),
-    ) {
-        Text(
-            "风格 · ${state.preference.displayName}",
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
 private fun TranslationSecondaryButton(
     state: TranslationSessionState,
     running: Boolean,
-    onPaste: () -> Unit,
     onCopy: () -> Unit,
     modifier: Modifier,
 ) {
     OutlinedButton(
-        onClick = if (state.translatedText.isNotBlank()) onCopy else onPaste,
-        enabled = !running,
-        modifier = modifier,
+        onClick = onCopy,
+        enabled = !running && state.translatedText.isNotBlank(),
+        modifier = modifier.heightIn(min = 52.dp),
     ) {
-        Text(if (state.translatedText.isNotBlank()) "复制译文" else "粘贴原文")
+        Text("复制译文")
     }
 }
 
@@ -716,7 +821,9 @@ private fun TranslationPrimaryButton(
     Button(
         onClick = onClick,
         enabled = running || state.sourceText.isNotBlank(),
-        modifier = modifier.automationTag("translate_button"),
+        modifier = modifier
+            .heightIn(min = 52.dp)
+            .automationTag("translate_button"),
     ) {
         Text(
             when {
@@ -732,22 +839,13 @@ private fun TranslationPrimaryButton(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TranslationOptionsSheet(
-    choice: TranslationChoice,
-    targetLanguage: TargetLanguage,
+private fun TranslationPreferenceSheet(
     preference: TranslationPreference,
     onDismiss: () -> Unit,
-    onSelectTarget: (TargetLanguage) -> Unit,
     onSelectPreference: (TranslationPreference) -> Unit,
 ) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val title = if (choice == TranslationChoice.TARGET) "翻译成" else "翻译风格"
-    val helper = if (choice == TranslationChoice.TARGET) {
-        "选择本次翻译的目标语言"
-    } else {
-        "随时切换表达方式，不影响供应商配置"
-    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -761,52 +859,44 @@ private fun TranslationOptionsSheet(
                 .padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("翻译风格", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             Text(
-                helper,
+                "随时切换表达方式，不影响供应商配置",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            val options = if (choice == TranslationChoice.TARGET) {
-                TargetLanguage.entries.map { option ->
-                    ChoiceOption(
-                        label = option.displayName,
-                        selected = option == targetLanguage,
-                        tag = "choice_target_${option.name}",
-                    ) { onSelectTarget(option) }
-                }
-            } else {
-                TranslationPreference.entries.map { option ->
-                    ChoiceOption(
-                        label = option.displayName,
-                        selected = option == preference,
-                        tag = "choice_preference_${option.name}",
-                    ) { onSelectPreference(option) }
-                }
+            val options = TranslationPreference.entries.map { option ->
+                ChoiceOption(
+                    label = option.displayName,
+                    description = when (option) {
+                        TranslationPreference.GENERAL -> "自然流畅"
+                        TranslationPreference.FORMAL -> "专业严谨"
+                        TranslationPreference.CONVERSATIONAL -> "日常自然"
+                        TranslationPreference.CORRESPONDENCE -> "礼貌得体"
+                        TranslationPreference.ACADEMIC -> "客观准确"
+                        TranslationPreference.LITERARY -> "保留韵味"
+                    },
+                    selected = option == preference,
+                    tag = "choice_preference_${option.name}",
+                ) { onSelectPreference(option) }
             }
-            if (landscape) {
-                options.chunked(2).forEach { rowOptions ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        rowOptions.forEach { option ->
-                            TranslationChoiceChip(
-                                option = option,
-                                modifier = Modifier.weight(1f),
-                                minHeight = 56.dp,
-                            )
-                        }
-                        if (rowOptions.size == 1) Spacer(modifier = Modifier.weight(1f))
+            val columnCount = if (landscape) 3 else 2
+            val optionHeight = if (landscape) 68.dp else 76.dp
+            options.chunked(columnCount).forEach { rowOptions ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    rowOptions.forEach { option ->
+                        TranslationStyleButton(
+                            option = option,
+                            modifier = Modifier.weight(1f),
+                            minHeight = optionHeight,
+                        )
                     }
-                }
-            } else {
-                options.forEach { option ->
-                    TranslationChoiceChip(
-                        option = option,
-                        modifier = Modifier.fillMaxWidth(),
-                        minHeight = 72.dp,
-                    )
+                    repeat(columnCount - rowOptions.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -814,23 +904,61 @@ private fun TranslationOptionsSheet(
 }
 
 @Composable
-private fun TranslationChoiceChip(
+private fun TranslationStyleButton(
     option: ChoiceOption,
     modifier: Modifier,
     minHeight: androidx.compose.ui.unit.Dp,
 ) {
-    FilterChip(
-        selected = option.selected,
-        onClick = option.onClick,
-        label = { Text(option.label, style = MaterialTheme.typography.titleMedium) },
-        modifier = modifier
-            .heightIn(min = minHeight)
-            .automationTag(option.tag),
-    )
+    val buttonModifier = modifier
+        .heightIn(min = minHeight)
+        .semantics { selected = option.selected }
+        .automationTag(option.tag)
+    if (option.selected) {
+        FilledTonalButton(
+            onClick = option.onClick,
+            shape = MaterialTheme.shapes.large,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            modifier = buttonModifier,
+        ) {
+            TranslationStyleButtonContent(option, selected = true)
+        }
+    } else {
+        OutlinedButton(
+            onClick = option.onClick,
+            shape = MaterialTheme.shapes.large,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            modifier = buttonModifier,
+        ) {
+            TranslationStyleButtonContent(option, selected = false)
+        }
+    }
+}
+
+@Composable
+private fun TranslationStyleButtonContent(option: ChoiceOption, selected: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            option.label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+        )
+        Text(
+            option.description,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 private data class ChoiceOption(
     val label: String,
+    val description: String,
     val selected: Boolean,
     val tag: String,
     val onClick: () -> Unit,
@@ -848,6 +976,14 @@ private fun StatusBanner(text: String) {
 private fun copyText(context: Context, label: String, text: String) {
     context.getSystemService(ClipboardManager::class.java)
         .setPrimaryClip(ClipData.newPlainText(label, text))
+}
+
+private fun Modifier.clearFocusOnUnconsumedTap(onTap: () -> Unit): Modifier = pointerInput(onTap) {
+    awaitEachGesture {
+        val down = awaitFirstDown(pass = PointerEventPass.Final)
+        val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
+        if (up != null && !down.isConsumed && !up.isConsumed) onTap()
+    }
 }
 
 internal fun Modifier.automationTag(tag: String): Modifier =
