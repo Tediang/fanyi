@@ -105,7 +105,7 @@ class TranslationPaneFlowTest {
                 japaneseChoice.visibleBounds.height() >= minimumChoiceHeight,
             )
             japaneseChoice.click()
-            assertVisible("目标 · 日文")
+            device.waitForIdle()
 
             findResource("preference_selector").click()
             listOf("通用", "正式", "口语", "书信", "学术", "文学").forEach(::assertVisible)
@@ -139,11 +139,18 @@ class TranslationPaneFlowTest {
     }
 
     @Test
-    fun sourceAutoFocusesOnlyUntilTheUserMovesFocusAway() {
+    fun sourceFocusRequiresAnExplicitUserTap() {
         launchApp().use {
             val focusedSource = By.res("source_text").focused(true)
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertTrue(
+                "Source must not receive focus automatically",
+                device.findObject(focusedSource) == null,
+            )
+
+            findResource("source_text").click()
             assertNotNull(
-                "Source should receive focus on initial entry",
+                "The user can focus the source again explicitly",
                 device.wait(Until.findObject(focusedSource), TIMEOUT_MS),
             )
 
@@ -154,11 +161,70 @@ class TranslationPaneFlowTest {
             )
             device.pressBack()
             assertTrue("Recomposition must not reclaim source focus", device.findObject(focusedSource) == null)
+        }
+    }
 
-            findResource("source_text").click()
-            assertNotNull(
-                "The user can focus the source again explicitly",
-                device.wait(Until.findObject(focusedSource), TIMEOUT_MS),
+    @Test
+    fun recreationPreservesCompletedTranslationWithoutFocusingSource() {
+        server.enqueue(
+            MockResponse.Builder()
+                .addHeader("Content-Type", "text/event-stream")
+                .body(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"切回后仍保留\"}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                )
+                .build(),
+        )
+
+        launchApp().use { scenario ->
+            findResource("source_text").text = "Keep this source after returning."
+            findResource("translate_button").click()
+            assertVisible("切回后仍保留")
+
+            scenario.recreate()
+
+            assertVisible("Keep this source after returning.")
+            assertVisible("切回后仍保留")
+            assertTrue(
+                "Returning to the app must not focus the source field",
+                device.findObject(By.res("source_text").focused(true)) == null,
+            )
+        }
+    }
+
+    @Test
+    fun launcherReentryPreservesCompletedTranslationWithoutFocusingSource() {
+        server.enqueue(
+            MockResponse.Builder()
+                .addHeader("Content-Type", "text/event-stream")
+                .body(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"再次进入仍保留\"}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                )
+                .build(),
+        )
+
+        launchApp().use { scenario ->
+            findResource("source_text").text = "Keep this source on launcher re-entry."
+            findResource("translate_button").click()
+            assertVisible("再次进入仍保留")
+
+            scenario.onActivity { activity ->
+                MainActivity::class.java
+                    .getDeclaredMethod("onNewIntent", Intent::class.java)
+                    .apply { isAccessible = true }
+                    .invoke(
+                        activity,
+                        Intent(context, MainActivity::class.java).apply { action = Intent.ACTION_MAIN },
+                    )
+            }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+            assertVisible("Keep this source on launcher re-entry.")
+            assertVisible("再次进入仍保留")
+            assertTrue(
+                "Launcher re-entry must not focus the source field",
+                device.findObject(By.res("source_text").focused(true)) == null,
             )
         }
     }

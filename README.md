@@ -6,7 +6,7 @@
 
 [![Android build and release](https://github.com/Tediang/fanyi/actions/workflows/android-release.yml/badge.svg)](https://github.com/Tediang/fanyi/actions/workflows/android-release.yml)
 ![Android 15+](https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.0.4-2878F0)
+![Version](https://img.shields.io/badge/version-1.0.5-2878F0)
 
 [下载最新版](https://github.com/Tediang/fanyi/releases/latest) · [安装与配置](docs/testing/install-and-configure.md) · [可行性调研](docs/research/android-translation-app-feasibility.md)
 
@@ -49,7 +49,7 @@
 下载完成后可在手机上直接打开 APK 安装；也可以通过 ADB 安装：
 
 ```shell
-adb install -r quick-translate-v1.0.4.apk
+adb install -r quick-translate-v1.0.5.apk
 ```
 
 如果系统拦截安装，请只为实际打开 APK 的文件管理器或浏览器临时开启“允许安装未知应用”。无需 Root，也无需开启无障碍权限。

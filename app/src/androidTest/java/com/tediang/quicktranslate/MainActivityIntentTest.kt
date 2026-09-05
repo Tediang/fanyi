@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import androidx.lifecycle.Lifecycle
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.After
@@ -132,6 +133,26 @@ class MainActivityIntentTest {
         ActivityScenario.launch<MainActivity>(baseIntent(ACTION_TRANSLATE_CLIPBOARD)).use {
             assertVisible("快捷键翻译")
             assertVisible("等待输入")
+            assertEquals(1, server.requestCount)
+        }
+    }
+
+    @Test
+    fun clipboardShortcutKeepsResolvedTranslationAfterBackgroundResume() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.getSystemService(ClipboardManager::class.java)
+            .setPrimaryClip(ClipData.newPlainText("test", "Keep shortcut source"))
+        enqueueTranslation("保留快捷键译文")
+
+        ActivityScenario.launch<MainActivity>(baseIntent(ACTION_TRANSLATE_CLIPBOARD)).use { scenario ->
+            assertVisible("Keep shortcut source")
+            assertVisible("保留快捷键译文")
+
+            scenario.moveToState(Lifecycle.State.CREATED)
+            scenario.moveToState(Lifecycle.State.RESUMED)
+
+            assertVisible("Keep shortcut source")
+            assertVisible("保留快捷键译文")
             assertEquals(1, server.requestCount)
         }
     }

@@ -60,14 +60,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -87,10 +86,71 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 private enum class AppSurface { TRANSLATE, PROFILES, EDIT_PROFILE }
 private enum class ExpandedPane { SOURCE, TRANSLATION }
+
+private val translationSessionStateSaver = listSaver<TranslationSessionState, Any>(
+    save = { state ->
+        val failed = state.progress as? TranslationProgress.Failed
+        listOf(
+            state.sourceText,
+            state.targetLanguage.name,
+            state.preference.name,
+            state.translatedText,
+            when (state.progress) {
+                TranslationProgress.Idle -> "idle"
+                is TranslationProgress.Running -> "running"
+                is TranslationProgress.Completed -> "completed"
+                is TranslationProgress.Failed -> "failed"
+                TranslationProgress.Cancelled -> "cancelled"
+            },
+            failed?.type?.name.orEmpty(),
+            failed?.message.orEmpty(),
+            failed?.incomplete ?: false,
+            (state.progress as? TranslationProgress.Completed)?.diagnostics?.totalMs ?: -1L,
+        )
+    },
+    restore = { saved ->
+        val sourceText = saved[0] as String
+        val progress = when (saved[4] as String) {
+            "completed" -> TranslationProgress.Completed(
+                restoredTranslationDiagnostics(saved[8] as Long),
+            )
+            "failed" -> TranslationProgress.Failed(
+                type = runCatching { TranslationErrorType.valueOf(saved[5] as String) }
+                    .getOrDefault(TranslationErrorType.NETWORK),
+                message = saved[6] as String,
+                incomplete = saved[7] as Boolean,
+                diagnostics = null,
+            )
+            "running", "cancelled" -> TranslationProgress.Cancelled
+            else -> TranslationProgress.Idle
+        }
+        TranslationSessionState(
+            sourceText = sourceText,
+            targetLanguage = runCatching { TargetLanguage.valueOf(saved[1] as String) }
+                .getOrDefault(defaultTargetLanguage(sourceText)),
+            preference = runCatching { TranslationPreference.valueOf(saved[2] as String) }
+                .getOrDefault(TranslationPreference.GENERAL),
+            translatedText = saved[3] as String,
+            progress = progress,
+        )
+    },
+)
+
+private fun restoredTranslationDiagnostics(totalMs: Long) = TranslationDiagnostics(
+    protocol = "",
+    endpoint = "",
+    model = "",
+    httpStatus = null,
+    errorType = null,
+    requestDispatchMs = 0L,
+    firstTextMs = null,
+    totalMs = totalMs.coerceAtLeast(0L),
+)
 
 @Composable
 internal fun QuickTranslateApp(
@@ -103,6 +163,18 @@ internal fun QuickTranslateApp(
 ) {
     var catalog by remember { mutableStateOf(profileRepository.load()) }
     val sessionScope = rememberCoroutineScope()
+    var retainedSessionState by rememberSaveable(
+        launch.id,
+        stateSaver = translationSessionStateSaver,
+    ) {
+        mutableStateOf(
+            TranslationSessionState(
+                sourceText = launch.sourceText,
+                targetLanguage = defaultTargetLanguage(launch.sourceText),
+                preference = preferenceStore.load(),
+            ),
+        )
+    }
     val controller = remember(launch.id) {
         TranslationSessionController(
             gateway,
@@ -110,9 +182,10 @@ internal fun QuickTranslateApp(
             launch.sourceText,
             launch.id,
             preferenceStore.load(),
+            initialState = retainedSessionState,
         )
     }
-    var autoStarted by remember(launch.id) { mutableStateOf(false) }
+    var autoStarted by rememberSaveable(launch.id) { mutableStateOf(false) }
     var surface by rememberSaveable {
         mutableStateOf(if (catalog.currentProfile == null) AppSurface.PROFILES else AppSurface.TRANSLATE)
     }
@@ -120,6 +193,10 @@ internal fun QuickTranslateApp(
     var resumeAfterTestProfileId by rememberSaveable { mutableStateOf<String?>(null) }
 
     DisposableEffect(controller) { onDispose { controller.dispose() } }
+
+    LaunchedEffect(controller) {
+        controller.state.collect { retainedSessionState = it }
+    }
 
     LaunchedEffect(launch.id) {
         withFrameNanos { }
@@ -228,15 +305,9 @@ private fun TranslationSessionScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
-    val sourceFocusRequester = remember { FocusRequester() }
     val state by controller.state.collectAsState()
     var expandedPane by rememberSaveable { mutableStateOf<ExpandedPane?>(null) }
     var showPreferenceSheet by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(launch.id) {
-        withFrameNanos { }
-        sourceFocusRequester.requestFocus()
-    }
 
     val running = state.progress is TranslationProgress.Running
 
@@ -347,7 +418,6 @@ private fun TranslationSessionScreen(
                         SourceTextPane(
                             state = state,
                             running = running,
-                            focusRequester = sourceFocusRequester,
                             onSourceChange = controller::updateSource,
                             onPaste = pasteSource,
                             onClear = {
@@ -377,7 +447,6 @@ private fun TranslationSessionScreen(
                     SourceTextPane(
                         state = state,
                         running = running,
-                        focusRequester = sourceFocusRequester,
                         onSourceChange = controller::updateSource,
                         onPaste = pasteSource,
                         onClear = {
@@ -423,7 +492,6 @@ private fun TranslationSessionScreen(
 private fun SourceTextPane(
     state: TranslationSessionState,
     running: Boolean,
-    focusRequester: FocusRequester,
     onSourceChange: (String) -> Unit,
     onPaste: () -> Unit,
     onClear: () -> Unit,
@@ -463,7 +531,6 @@ private fun SourceTextPane(
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier
                     .fillMaxSize()
-                    .focusRequester(focusRequester)
                     .automationTag("source_text"),
                 decorationBox = { innerTextField ->
                     Box(

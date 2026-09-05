@@ -96,9 +96,10 @@ internal class TranslationSessionController(
     initialSourceText: String,
     private val launchId: String? = null,
     initialPreference: TranslationPreference = TranslationPreference.GENERAL,
+    initialState: TranslationSessionState? = null,
 ) {
     private val mutableState = MutableStateFlow(
-        TranslationSessionState(
+        initialState ?: TranslationSessionState(
             sourceText = initialSourceText,
             targetLanguage = defaultTargetLanguage(initialSourceText),
             preference = initialPreference,
